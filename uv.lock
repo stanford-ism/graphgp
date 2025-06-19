@@ -3,6 +3,15 @@ revision = 2
 requires-python = ">=3.13"
 
 [[package]]
+name = "absl-py"
+version = "2.3.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/03/15/18693af986560a5c3cc0b84a8046b536ffb2cdb536e03cce897f2759e284/absl_py-2.3.0.tar.gz", hash = "sha256:d96fda5c884f1b22178852f30ffa85766d50b99e00775ea626c23304f582fc4f", size = 116400, upload-time = "2025-05-27T09:15:50.143Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/87/04/9d75e1d3bb4ab8ec67ff10919476ccdee06c098bcfcf3a352da5f985171d/absl_py-2.3.0-py3-none-any.whl", hash = "sha256:9824a48b654a306168f63e0d97714665f8490b8d89ec7bf2efc24bf67cf579b3", size = 135657, upload-time = "2025-05-27T09:15:48.742Z" },
+]
+
+[[package]]
 name = "anyio"
 version = "4.9.0"
 source = { registry = "https://pypi.org/simple" }
@@ -190,6 +199,24 @@ wheels = [
 ]
 
 [[package]]
+name = "chex"
+version = "0.1.89"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "absl-py" },
+    { name = "jax" },
+    { name = "jaxlib" },
+    { name = "numpy" },
+    { name = "setuptools" },
+    { name = "toolz" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/ca/ac/504a8019f7ef372fc6cc3999ec9e3d0fbb38e6992f55d845d5b928010c11/chex-0.1.89.tar.gz", hash = "sha256:78f856e6a0a8459edfcbb402c2c044d2b8102eac4b633838cbdfdcdb09c6c8e0", size = 90676, upload-time = "2025-02-25T15:43:30.23Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/5e/6c/309972937d931069816dc8b28193a650485bc35cca92c04c8c15c4bd181e/chex-0.1.89-py3-none-any.whl", hash = "sha256:145241c27d8944adb634fb7d472a460e1c1b643f561507d4031ad5156ef82dfa", size = 99908, upload-time = "2025-02-25T15:43:27.316Z" },
+]
+
+[[package]]
 name = "colorama"
 version = "0.4.6"
 source = { registry = "https://pypi.org/simple" }
@@ -365,16 +392,15 @@ wheels = [
 [[package]]
 name = "hugegp"
 source = { editable = "." }
-dependencies = [
-    { name = "jax" },
-]
 
 [package.optional-dependencies]
 dev = [
     { name = "ipywidgets" },
     { name = "jax", extra = ["cuda12"] },
+    { name = "jaxkd", extra = ["cuda"] },
     { name = "jupyterlab" },
     { name = "matplotlib" },
+    { name = "optax" },
     { name = "pytest" },
     { name = "ruff" },
     { name = "tqdm" },
@@ -383,10 +409,11 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "ipywidgets", marker = "extra == 'dev'", specifier = ">=8.1.7" },
-    { name = "jax" },
     { name = "jax", extras = ["cuda12"], marker = "extra == 'dev'", specifier = "==0.6.0" },
+    { name = "jaxkd", extras = ["cuda"], marker = "extra == 'dev'" },
     { name = "jupyterlab", marker = "extra == 'dev'", specifier = ">=4.4.3" },
     { name = "matplotlib", marker = "extra == 'dev'", specifier = ">=3.10.3" },
+    { name = "optax", marker = "extra == 'dev'" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3.5" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.11.11" },
     { name = "tqdm", marker = "extra == 'dev'", specifier = ">=4.67.1" },
@@ -554,6 +581,32 @@ with-cuda = [
     { name = "nvidia-nccl-cu12" },
     { name = "nvidia-nvjitlink-cu12" },
 ]
+
+[[package]]
+name = "jaxkd"
+version = "0.1.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "jax", extra = ["cuda12"] },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/bd/d1/e77c3a7724e1cf9b4efc78a11608c1f113e5e0c9d7c624bf43120842dcc9/jaxkd-0.1.1.tar.gz", hash = "sha256:83018f4f02ea32f5596befb8fae07ce5f1a65ba88ebcca276d7e4d9bba6f0542", size = 9366, upload-time = "2025-06-18T01:34:14.176Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/33/47/63e50bb349d3d26563e6be729dfba541e707fad834df4a7da9e48d5afa0e/jaxkd-0.1.1-py3-none-any.whl", hash = "sha256:a9afb5bb137facc48473b32e478134fd1ff22bfa351208f92181f4c1ab062258", size = 11339, upload-time = "2025-06-18T01:34:12.874Z" },
+]
+
+[package.optional-dependencies]
+cuda = [
+    { name = "jaxkd-cuda" },
+]
+
+[[package]]
+name = "jaxkd-cuda"
+version = "0.0.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "jax", extra = ["cuda12"] },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/e0/9f/afaec109be9ff0d247ba19eebe220464454815e339ca9a85229e6d298ff3/jaxkd_cuda-0.0.0.tar.gz", hash = "sha256:86cb49923df389793a4a917c6caa15821d6a3c41eac753dd87ca0793b85fe645", size = 131206, upload-time = "2025-06-18T00:38:36.968Z" }
 
 [[package]]
 name = "jaxlib"
@@ -1181,6 +1234,22 @@ wheels = [
 ]
 
 [[package]]
+name = "optax"
+version = "0.2.5"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "absl-py" },
+    { name = "chex" },
+    { name = "jax" },
+    { name = "jaxlib" },
+    { name = "numpy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/c0/75/1e011953c48be502d4d84fa8458e91be7c6f983002511669bddd7b1a065f/optax-0.2.5.tar.gz", hash = "sha256:b2e38c7aea376186deae758ba7a258e6ef760c6f6131e9e11bc561c65386d594", size = 258548, upload-time = "2025-06-10T17:00:47.544Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b9/33/f86091c706db1a5459f501830241afff2ecab3532725c188ea57be6e54de/optax-0.2.5-py3-none-any.whl", hash = "sha256:966deae936207f268ac8f564d8ed228d645ac1aaddefbbf194096d2299b24ba8", size = 354324, upload-time = "2025-06-10T17:00:46.062Z" },
+]
+
+[[package]]
 name = "overrides"
 version = "7.7.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1682,6 +1751,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/7a/fd/7a5ee21fd08ff70d3d33a5781c255cbe779659bd03278feb98b19ee550f4/tinycss2-1.4.0.tar.gz", hash = "sha256:10c0972f6fc0fbee87c3edb76549357415e94548c1ae10ebccdea16fb404a9b7", size = 87085, upload-time = "2024-10-24T14:58:29.895Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/e6/34/ebdc18bae6aa14fbee1a08b63c015c72b64868ff7dae68808ab500c492e2/tinycss2-1.4.0-py3-none-any.whl", hash = "sha256:3a49cf47b7675da0b15d0c6e1df8df4ebd96e9394bb905a5775adb0d884c5289", size = 26610, upload-time = "2024-10-24T14:58:28.029Z" },
+]
+
+[[package]]
+name = "toolz"
+version = "1.0.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/8a/0b/d80dfa675bf592f636d1ea0b835eab4ec8df6e9415d8cfd766df54456123/toolz-1.0.0.tar.gz", hash = "sha256:2c86e3d9a04798ac556793bced838816296a2f085017664e4995cb40a1047a02", size = 66790, upload-time = "2024-10-04T16:17:04.001Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/03/98/eb27cc78ad3af8e302c9d8ff4977f5026676e130d28dd7578132a457170c/toolz-1.0.0-py3-none-any.whl", hash = "sha256:292c8f1c4e7516bf9086f8850935c799a874039c8bcf959d47b600e4c44a6236", size = 56383, upload-time = "2024-10-04T16:17:01.533Z" },
 ]
 
 [[package]]

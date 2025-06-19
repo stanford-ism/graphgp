@@ -1,6 +1,7 @@
 import jax
 import jax.numpy as jnp
 from jax.tree_util import Partial
+import numpy as np
 
 from .covariance import test_cov, test_cov_matrix
 
@@ -12,38 +13,37 @@ except ImportError:
     has_cuda = False
 
 
-def generate_static(
+def generate(points, xi):
+    L = jnp.linalg.cholesky(test_cov_matrix(points))
+    values = L @ xi
+    return values
+
+
+def generate_refine(
     graph,
     xi,
     cuda=False,
 ):
-    points, indices, neighbors, level_offsets = graph
+    points, neighbors, level_offsets = graph
 
     # Generate initial values
-    L = jnp.linalg.cholesky(test_cov_matrix(points[indices[: level_offsets[0]]]))
-    initial_values = L @ xi[indices[: level_offsets[0]]]
+    L = jnp.linalg.cholesky(test_cov_matrix(points[: level_offsets[0]]))
+    initial_values = L @ xi[: level_offsets[0]]
 
-    cov_distances = jnp.zeros(1)
-    cov_values = jnp.zeros(1)
+    cov_r, cov = (jnp.zeros(1), jnp.zeros(1))
 
     # Refine
     if cuda:
         if not has_cuda:
             raise ImportError("hugegp_cuda is not available")
-        return hugegp_cuda.refine_static(
-            points, xi, indices, neighbors, level_offsets, cov_distances, cov_values, initial_values
-        )
+        level_offsets = np.array(level_offsets, dtype=np.uint32)
+        return hugegp_cuda.refine(points, xi, neighbors, level_offsets, initial_values, cov_r, cov)
     else:
-        offsets = tuple(int(li) for li in level_offsets)
-        return refine_static_impl(
-            points, xi, indices, neighbors, offsets, cov_distances, cov_values, initial_values
-        )
+        return refine(points, xi, neighbors, level_offsets, initial_values, cov_r, cov)
 
 
-@Partial(jax.jit, static_argnums=(4,))
-def refine_static_impl(
-    points, xi, indices, neighbors, level_offsets, cov_distances, cov_values, initial_values
-):
+@Partial(jax.jit, static_argnums=(3,))
+def refine(points, xi, neighbors, level_offsets, initial_values, cov_r, cov):
     values = [initial_values]
     level_offsets = level_offsets + (len(points),)
 
@@ -51,9 +51,9 @@ def refine_static_impl(
         start = level_offsets[i]
         end = level_offsets[i + 1]
 
-        fine_point = points[indices[start:end]]
-        fine_xi = xi[indices[start:end]]
-        coarse_points = points[indices[neighbors[start:end]]]
+        fine_point = points[start:end]
+        fine_xi = xi[start:end]
+        coarse_points = points[neighbors[start:end]]
         coarse_values = jnp.concatenate(values)[neighbors[start:end]]
 
         Kff = test_cov(0.0)
@@ -67,4 +67,4 @@ def refine_static_impl(
         std = jnp.sqrt(jnp.maximum(var, 0.0))
         values.append(mean + std * fine_xi)
 
-    return jnp.concatenate(values)[jnp.argsort(indices)]
+    return jnp.concatenate(values)

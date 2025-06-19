@@ -1,7 +1,8 @@
-from .tree import build_graph
-from .refine import generate_static
+from .graph import build_kd_graph
+from .refine import generate, generate_refine
 
 __all__ = [
     "build_graph",
-    "generate_static",
+    "generate",
+    "generate_refine",
 ]
