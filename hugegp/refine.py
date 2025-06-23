@@ -58,19 +58,20 @@ def refine(points, offsets, neighbors, cov_bins, cov_vals, initial_values, xi):
         coarse_points = points[neighbors[start:end]]
         coarse_values = jnp.concatenate(values)[neighbors[start:end]]
 
-        # Kff = cov_lookup(jnp.array([0.0]), cov_bins, cov_vals)
-        # Kcc = cov_lookup_matrix(coarse_points, coarse_points, cov_bins, cov_vals)
-        # Kfc = cov_lookup_matrix(fine_point, coarse_points, cov_bins, cov_vals).squeeze(-2)
+        Kff = cov_lookup(jnp.array([0.0]), cov_bins, cov_vals)
+        Kcc = cov_lookup_matrix(coarse_points, coarse_points, cov_bins, cov_vals)
+        Kfc = cov_lookup_matrix(fine_point, coarse_points, cov_bins, cov_vals).squeeze(-2)
 
-        Kff = test_cov(jnp.array([0.0]))
-        Kcc = test_cov_matrix(coarse_points, coarse_points)
-        Kfc = test_cov_matrix(fine_point, coarse_points).squeeze(-2)
+        # Kff = test_cov(jnp.array([0.0]))
+        # Kcc = test_cov_matrix(coarse_points, coarse_points)
+        # Kfc = test_cov_matrix(fine_point, coarse_points).squeeze(-2)
 
         mean = Kfc * jnp.linalg.solve(Kcc, coarse_values[..., jnp.newaxis]).squeeze(-1)
         mean = jnp.sum(mean, axis=-1)
 
         var = Kff - jnp.sum(Kfc * jnp.linalg.solve(Kcc, Kfc[..., jnp.newaxis]).squeeze(-1), axis=-1)
-        std = jnp.sqrt(jnp.maximum(var, 0.0))
+        var = jnp.maximum(var, 0.0)
+        std = jnp.sqrt(var)
         values.append(mean + std * fine_xi)
 
     return jnp.concatenate(values)
