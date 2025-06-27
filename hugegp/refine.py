@@ -70,7 +70,7 @@ def refine(points, offsets, neighbors, cov_bins, cov_vals, initial_values, xi):
         mean = jnp.sum(mean, axis=-1)
 
         var = Kff - jnp.sum(Kfc * jnp.linalg.solve(Kcc, Kfc[..., jnp.newaxis]).squeeze(-1), axis=-1)
-        var = jnp.maximum(var, 0.0)
+        # var = jnp.maximum(var, 1e-2)
         std = jnp.sqrt(var)
         values.append(mean + std * fine_xi)
 

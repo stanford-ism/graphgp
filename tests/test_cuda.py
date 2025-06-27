@@ -188,7 +188,7 @@ def test_hessian():
     outlier_check("Hessian", jax_hess, cuda_hess, rtol=1e-2, frac_outliers_allowed=0.001)
 
 
-def test_linear_adjoint(rtol=1e-4):
+def test_linear_adjoint(rtol=1e-5):
     k1, k2, k3, k4 = jr.split(key, 4)
     n_points, graph, covariance = default_setup(k1)
     xi = jr.normal(k2, (n_points,))
