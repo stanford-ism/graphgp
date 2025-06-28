@@ -1,12 +1,13 @@
-from .graph import build_kd_graph, build_custom_graph
+from .graph import build_graph
 from .refine import generate, generate_refine
-from .covariance import test_cov, test_cov_discretized
+from .covariance import cov_lookup, cov_lookup_matrix, test_cov_discretized, test_cov_matrix
 
 __all__ = [
-    "build_kd_graph",
-    "build_custom_graph",
+    "build_graph",
     "generate",
     "generate_refine",
-    "test_cov",
+    "cov_lookup",
+    "cov_lookup_matrix",
     "test_cov_discretized",
+    "test_cov_matrix",
 ]

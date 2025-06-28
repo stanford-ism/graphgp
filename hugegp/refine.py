@@ -26,7 +26,7 @@ def generate_refine(
     *,
     cuda=False,
 ):
-    points, offsets, neighbors = graph
+    points, neighbors, offsets = graph
     cov_bins, cov_vals = covariance
 
     # Generate initial values
@@ -38,14 +38,14 @@ def generate_refine(
             raise ImportError("hugegp_cuda is not available")
         offsets = np.array(offsets, dtype=jnp.uint32)
         return hugegp_cuda.refine(
-            points, offsets, neighbors, cov_bins, cov_vals, initial_values, xi
+            points, neighbors, offsets, cov_bins, cov_vals, initial_values, xi
         )
     else:
-        return refine(points, offsets, neighbors, cov_bins, cov_vals, initial_values, xi)
+        return refine(points, neighbors, offsets, cov_bins, cov_vals, initial_values, xi)
 
 
-@Partial(jax.jit, static_argnums=(1,))
-def refine(points, offsets, neighbors, cov_bins, cov_vals, initial_values, xi):
+@Partial(jax.jit, static_argnums=(2,))
+def refine(points, neighbors, offsets, cov_bins, cov_vals, initial_values, xi):
     values = [initial_values]
     offsets = offsets + (len(points),)
 
