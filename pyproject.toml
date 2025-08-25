@@ -20,7 +20,7 @@ dev = [
 ]
 
 [project.urls]
-Source = "https://github.com/dodgebc/hu gegp"
+Source = "https://github.com/dodgebc/hugegp"
 
 [build-system]
 requires = ["hatchling", "hatch-vcs"]
@@ -30,5 +30,5 @@ build-backend = "hatchling.build"
 source = "vcs"
 
 [tool.ruff]
-line-length = 100
+line-length = 120
 exclude = ["*.ipynb"]

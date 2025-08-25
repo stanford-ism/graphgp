@@ -28,9 +28,13 @@ def cov_lookup_matrix(points_a, points_b, cov_bins, cov_vals):
     distances = jnp.linalg.norm(distances, axis=-1)
     return cov_lookup(distances, cov_bins, cov_vals)
 
+def compute_cov_matrix(cov_func, points_a, points_b):
+    distances = jnp.expand_dims(points_a, -2) - jnp.expand_dims(points_b, -3)
+    distances = jnp.linalg.norm(distances, axis=-1)
+    return cov_func(distances)
 
 def matern_cov(r, *, cutoff=0.2, eps=1e-5):
-    result = (1 + jnp.sqrt(3) * r / cutoff) * jnp.exp(-jnp.sqrt(3) * r / cutoff) / jnp.exp(0)
+    result = (1 + jnp.sqrt(3) * r / cutoff) * jnp.exp(-jnp.sqrt(3) * r / cutoff)
     result = jnp.where(r == 0.0, result * (1 + eps), result)
     return result
 
@@ -40,19 +44,19 @@ def matern_cov_discretized(r_min, r_max, n_bins, *, cutoff=0.2, eps=1e-5):
     return cov_bins, matern_cov(cov_bins, cutoff=cutoff, eps=eps)
 
 
-def test_cov(r, *, cutoff=0.2, slope=-1.0, scale=1.0, eps=1e-4):
-    result = scale * (1 + (r / cutoff) ** 2) ** (slope)
-    result = jnp.where(r == 0.0, result * (1 + eps), result)
-    return result
+# def test_cov(r, *, cutoff=0.2, slope=-1.0, scale=1.0, eps=1e-4):
+#     result = scale * (1 + (r / cutoff) ** 2) ** (slope)
+#     result = jnp.where(r == 0.0, result * (1 + eps), result)
+#     return result
 
-def test_cov_discretized(r_min, r_max, n_bins, *, cutoff=0.2, slope=-1.0, scale=1.0, eps=1e-4):
-    cov_bins = jnp.logspace(jnp.log10(r_min), jnp.log10(r_max), n_bins)
-    cov_bins = cov_bins.at[0].set(0.0)
-    return cov_bins, test_cov(cov_bins, cutoff=cutoff, slope=slope, scale=scale, eps=eps)
+# def test_cov_discretized(r_min, r_max, n_bins, *, cutoff=0.2, slope=-1.0, scale=1.0, eps=1e-4):
+#     cov_bins = jnp.logspace(jnp.log10(r_min), jnp.log10(r_max), n_bins)
+#     cov_bins = cov_bins.at[0].set(0.0)
+#     return cov_bins, test_cov(cov_bins, cutoff=cutoff, slope=slope, scale=scale, eps=eps)
 
-def test_cov_matrix(points_a, points_b=None, cutoff=0.2, slope=-1.0, scale=1.0, eps=1e-4):
-    if points_b is None:
-        points_b = points_a
-    distances = jnp.expand_dims(points_a, -2) - jnp.expand_dims(points_b, -3)
-    distances = jnp.linalg.norm(distances, axis=-1)
-    return test_cov(distances, cutoff=cutoff, slope=slope, scale=scale, eps=eps)
+# def test_cov_matrix(points_a, points_b=None, cutoff=0.2, slope=-1.0, scale=1.0, eps=1e-4):
+#     if points_b is None:
+#         points_b = points_a
+#     distances = jnp.expand_dims(points_a, -2) - jnp.expand_dims(points_b, -3)
+#     distances = jnp.linalg.norm(distances, axis=-1)
+#     return test_cov(distances, cutoff=cutoff, slope=slope, scale=scale, eps=eps)
