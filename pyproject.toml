@@ -32,3 +32,9 @@ source = "vcs"
 [tool.ruff]
 line-length = 120
 exclude = ["*.ipynb"]
+
+[dependency-groups]
+dev = [
+    "cmasher>=1.9.2",
+    "pytest>=8.4.1",
+]

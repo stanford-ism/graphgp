@@ -1,15 +1,38 @@
+from .tree import build_tree, query_preceding_neighbors, query_offset_neighbors
+from .graph import Graph, check_graph, build_graph, build_strict_graph, build_lazy_graph
+from .covariance import MaternCovariance, compute_matern_covariance, compute_cov_matrix, discretize_covariance
 from .refine import (
     generate,
-    generate_dense,
-    refine,
     generate_inv,
-    generate_dense_inv,
-    refine_inv,
     generate_logdet,
+    generate_dense,
+    generate_dense_inv,
     generate_dense_logdet,
+    refine,
+    refine_inv,
     refine_logdet,
 )
 
-from .graph import check_graph, make_offsets, build_jax_graph
-
-from .covariance import compute_cov_matrix, cov_lookup, cov_lookup_matrix, matern_cov_discretized, matern_cov
+__all__ = [
+    "build_tree",
+    "query_preceding_neighbors",
+    "query_offset_neighbors",
+    "Graph",
+    "check_graph",
+    "build_graph",
+    "build_strict_graph",
+    "build_lazy_graph",
+    "MaternCovariance",
+    "compute_matern_covariance",
+    "compute_cov_matrix",
+    "discretize_covariance",
+    "generate",
+    "generate_inv",
+    "generate_logdet",
+    "generate_dense",
+    "generate_dense_inv",
+    "generate_dense_logdet",
+    "refine",
+    "refine_inv",
+    "refine_logdet",
+]

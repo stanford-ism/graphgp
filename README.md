@@ -2,14 +2,13 @@
   <img src="logo.png" alt="Project Logo" height="150" />
 </p>
 
-"Gaussian processes don't scale," they said.
+"Gaussian processes don't scale."
 
 ***GraphGP***... \
 ✅ generates Gaussian process realizations with approximately stationary, decaying kernels \
-✅ scales to billions of parameters in linear time with minimal memory overhead \
-✅ effortlessly handles arbitrary point distributions with many orders of magnitude of dynamic range \
-✅ uses JAX, with an optional CUDA extension that is recommended for large problems \
-✅ supports forward and backward mode differentiation for both white noise and kernel parameters \
+✅ scales to billions of parameters with linear time and memory requirements \
+✅ effortlessly handles arbitrary point distributions with large dynamic range \
+✅ uses JAX, with a faster CUDA extension that also supports derivatives \
 ✅ has an exact inverse and determinant available
 
 The underlying theory and implementation is described in two papers ([1], [2]). It is an evolution of Iterative Charted Refinement [3], which was first implemented in the NIFTy package [4].

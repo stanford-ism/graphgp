@@ -1,12 +1,99 @@
+from dataclasses import dataclass, field
+from typing import Callable, Tuple, Any, Union
+
+import jax
 import jax.numpy as jnp
+from jax.tree_util import Partial, register_dataclass
+from jax import Array
+from jax.scipy.special import gammaln
 
 
-def cov_lookup(r, cov_bins, cov_vals):
+@register_dataclass
+@dataclass
+class MaternCovariance:
+    """
+    Matern covariance function for nu = p + 1/2. Power spectrum has -(nu + n/2) slope. Not differentiable with respect to ``p``. Simply calls ``compute_matern_covariance``.
+
+    This dataclass can be passed to jit-compiled functions since ``p`` is marked as static. It can be called just like a normal function.
+    """
+
+    p: int = field(default=0, metadata=dict(static=True))
+    eps: float = field(default=1e-5, metadata=dict(static=True))
+
+    def __call__(self, r: float, *, sigma: float = 1.0, cutoff: float = 1.0):
+        return compute_matern_covariance(r, p=self.p, sigma=sigma, cutoff=cutoff, eps=self.eps)
+
+
+def compute_matern_covariance(r: Array, *, p: int = 0, sigma: float = 1.0, cutoff: float = 1.0, eps: float = 1e-5) -> Array:
+    """
+    Matern covariance function for nu = p + 1/2. Power spectrum has -(nu + n/2) slope. Not differentiable with respect to ``p``.
+    
+    Cannot be passed to jit-compiled functions. Use ``MaternCovariance`` object in that case.
+    """
+    x = jnp.sqrt(2 * p + 1) * r / cutoff
+    i = jnp.arange(p + 1)
+    log_coeff = (
+        _log_factorial(p) + _log_factorial(p + i) - _log_factorial(i) - _log_factorial(p - i) - _log_factorial(2 * p)
+    )
+    polynomial = jnp.polyval(jnp.exp(log_coeff), 2 * x)
+    result = sigma**2 * jnp.exp(-x) * polynomial
+    result = jnp.where(r == 0.0, result * (1 + eps), result)
+    return result
+
+
+def _log_factorial(x):
+    return gammaln(x + 1)
+
+
+def compute_cov_matrix(covariance: Callable, points_a: Array, points_b: Array) -> Array:
+    """
+    Compute the covariance matrix between two sets of points given a covariance function.
+    """
+    distances = jnp.expand_dims(points_a, -2) - jnp.expand_dims(points_b, -3)
+    distances = jnp.linalg.norm(distances, axis=-1)
+    return covariance(distances)
+
+
+def discretize_covariance(covariance: Callable, r_min: float, r_max: float, n_bins: int) -> Tuple[Array, Array]:
+    """
+    Discretize a covariance function into a set of bins. The bins are created in log space between `r_min` and `r_max`, with an extra bin at ``r=0`` for a total of ``n_bins``.
+
+    This is used to pass arbitrary covariances to the CUDA extension.
+
+    Args:
+        covariance: The covariance function to discretize.
+        r_min: The minimum radius.
+        r_max: The maximum radius.
+        n_bins: The number of bins to create.
+
+    Returns:
+        tuple:
+            - cov_bins: The locations where the covariance is evaluated of shape ``(n_bins,)``
+            - cov_vals: The corresponding covariance values of shape ``(n_bins,)``
+    """
+    cov_bins = jnp.logspace(jnp.log10(r_min), jnp.log10(r_max), n_bins)
+    cov_bins = cov_bins.at[0].set(0.0)
+    return cov_bins, covariance(cov_bins)
+
+
+def _compute_cov_matrix_lookup(cov_bins, cov_vals, points_a, points_b):
+    """
+    Construct a covariance matrix by lookup.
+
+    This should normally not be used in Python. It is here for debugging the CUDA extension which has an analogous function.
+    """
+    distances = jnp.expand_dims(points_a, -2) - jnp.expand_dims(points_b, -3)
+    distances = jnp.linalg.norm(distances, axis=-1)
+    return _cov_lookup(distances, cov_bins, cov_vals)
+
+def _cov_lookup(r, cov_bins, cov_vals):
     """
     Look up covariance in array of sampled `cov_vals` at radii `cov_bins` (equal-sized arrays).
     If `r` is inside of bounds, a linearly interpolated value is returned.
     If `r` is below the first bin, the first value is returned. But really the first bin should always be 0.0.
-    If `r` is above the last bin, the last value is returned. Maybe the last value sohuld be zero.
+    If `r` is above the last bin, the last value is returned. Maybe the last value should be zero.
+
+    This should normally not be used in Python. It is here for debugging the CUDA extension which has an analogous function.
     """
     # interpolate between bins
     idx = jnp.searchsorted(cov_bins, r)
@@ -23,40 +110,4 @@ def cov_lookup(r, cov_bins, cov_vals):
     return c
 
 
-def cov_lookup_matrix(points_a, points_b, cov_bins, cov_vals):
-    distances = jnp.expand_dims(points_a, -2) - jnp.expand_dims(points_b, -3)
-    distances = jnp.linalg.norm(distances, axis=-1)
-    return cov_lookup(distances, cov_bins, cov_vals)
 
-def compute_cov_matrix(cov_func, points_a, points_b):
-    distances = jnp.expand_dims(points_a, -2) - jnp.expand_dims(points_b, -3)
-    distances = jnp.linalg.norm(distances, axis=-1)
-    return cov_func(distances)
-
-def matern_cov(r, *, cutoff=0.2, eps=1e-5):
-    result = (1 + jnp.sqrt(3) * r / cutoff) * jnp.exp(-jnp.sqrt(3) * r / cutoff)
-    result = jnp.where(r == 0.0, result * (1 + eps), result)
-    return result
-
-def matern_cov_discretized(r_min, r_max, n_bins, *, cutoff=0.2, eps=1e-5):
-    cov_bins = jnp.logspace(jnp.log10(r_min), jnp.log10(r_max), n_bins)
-    cov_bins = cov_bins.at[0].set(0.0)
-    return cov_bins, matern_cov(cov_bins, cutoff=cutoff, eps=eps)
-
-
-# def test_cov(r, *, cutoff=0.2, slope=-1.0, scale=1.0, eps=1e-4):
-#     result = scale * (1 + (r / cutoff) ** 2) ** (slope)
-#     result = jnp.where(r == 0.0, result * (1 + eps), result)
-#     return result
-
-# def test_cov_discretized(r_min, r_max, n_bins, *, cutoff=0.2, slope=-1.0, scale=1.0, eps=1e-4):
-#     cov_bins = jnp.logspace(jnp.log10(r_min), jnp.log10(r_max), n_bins)
-#     cov_bins = cov_bins.at[0].set(0.0)
-#     return cov_bins, test_cov(cov_bins, cutoff=cutoff, slope=slope, scale=scale, eps=eps)
-
-# def test_cov_matrix(points_a, points_b=None, cutoff=0.2, slope=-1.0, scale=1.0, eps=1e-4):
-#     if points_b is None:
-#         points_b = points_a
-#     distances = jnp.expand_dims(points_a, -2) - jnp.expand_dims(points_b, -3)
-#     distances = jnp.linalg.norm(distances, axis=-1)
-#     return test_cov(distances, cutoff=cutoff, slope=slope, scale=scale, eps=eps)
