@@ -7,6 +7,7 @@ from jax.tree_util import Partial, register_dataclass
 from jax import Array
 from jax.scipy.special import gammaln
 
+CovarianceType = Union[Callable[Array, [Array]], Tuple[Array, Callable[Array, [Array]]], Tuple[Array, Array]]
 
 @register_dataclass
 @dataclass
@@ -24,10 +25,12 @@ class MaternCovariance:
         return compute_matern_covariance(r, p=self.p, sigma=sigma, cutoff=cutoff, eps=self.eps)
 
 
-def compute_matern_covariance(r: Array, *, p: int = 0, sigma: float = 1.0, cutoff: float = 1.0, eps: float = 1e-5) -> Array:
+def compute_matern_covariance(
+    r: Array, *, p: int = 0, sigma: float = 1.0, cutoff: float = 1.0, eps: float = 1e-5
+) -> Array:
     """
     Matern covariance function for nu = p + 1/2. Power spectrum has -(nu + n/2) slope. Not differentiable with respect to ``p``.
-    
+
     Cannot be passed to jit-compiled functions. Use ``MaternCovariance`` object in that case.
     """
     x = jnp.sqrt(2 * p + 1) * r / cutoff
@@ -45,55 +48,35 @@ def _log_factorial(x):
     return gammaln(x + 1)
 
 
-def compute_cov_matrix(covariance: Callable, points_a: Array, points_b: Array) -> Array:
+def compute_cov_matrix(
+    covariance: Tuple[Array, Array] | Tuple[Array, Callable] | Callable, points_a: Array, points_b: Array
+) -> Array:
     """
     Compute the covariance matrix between two sets of points given a covariance function.
     """
     distances = jnp.expand_dims(points_a, -2) - jnp.expand_dims(points_b, -3)
     distances = jnp.linalg.norm(distances, axis=-1)
-    return covariance(distances)
+    if isinstance(covariance, Callable):
+        return covariance(distances)
+    elif isinstance(covariance, Tuple) and isinstance(covariance[0], Array) and isinstance(covariance[1], Callable):
+        return covariance[1](distances)
+    elif isinstance(covariance, Tuple) and isinstance(covariance[0], Array) and isinstance(covariance[1], Array):
+        cov_bins, cov_vals = covariance
+        return cov_lookup(distances, cov_bins, cov_vals)
+    else:
+        raise ValueError("Invalid covariance specification.")
 
+def make_cov_bins(*, r_min: float, r_max: float, n_bins: int) -> Array:
+    cov_bins = jnp.logspace(jnp.log10(r_min), jnp.log10(r_max), n_bins - 1)
+    cov_bins = jnp.concatenate((jnp.array([0.0]), cov_bins), axis=0)
+    return cov_bins
 
-def discretize_covariance(covariance: Callable, r_min: float, r_max: float, n_bins: int) -> Tuple[Array, Array]:
-    """
-    Discretize a covariance function into a set of bins. The bins are created in log space between `r_min` and `r_max`, with an extra bin at ``r=0`` for a total of ``n_bins``.
-
-    This is used to pass arbitrary covariances to the CUDA extension.
-
-    Args:
-        covariance: The covariance function to discretize.
-        r_min: The minimum radius.
-        r_max: The maximum radius.
-        n_bins: The number of bins to create.
-
-    Returns:
-        tuple:
-            - cov_bins: The locations where the covariance is evaluated of shape ``(n_bins,)``
-            - cov_vals: The corresponding covariance values of shape ``(n_bins,)``
-    """
-    cov_bins = jnp.logspace(jnp.log10(r_min), jnp.log10(r_max), n_bins)
-    cov_bins = cov_bins.at[0].set(0.0)
-    return cov_bins, covariance(cov_bins)
-
-
-def _compute_cov_matrix_lookup(cov_bins, cov_vals, points_a, points_b):
-    """
-    Construct a covariance matrix by lookup.
-
-    This should normally not be used in Python. It is here for debugging the CUDA extension which has an analogous function.
-    """
-    distances = jnp.expand_dims(points_a, -2) - jnp.expand_dims(points_b, -3)
-    distances = jnp.linalg.norm(distances, axis=-1)
-    return _cov_lookup(distances, cov_bins, cov_vals)
-
-def _cov_lookup(r, cov_bins, cov_vals):
+def cov_lookup(r, cov_bins, cov_vals):
     """
     Look up covariance in array of sampled `cov_vals` at radii `cov_bins` (equal-sized arrays).
     If `r` is inside of bounds, a linearly interpolated value is returned.
     If `r` is below the first bin, the first value is returned. But really the first bin should always be 0.0.
     If `r` is above the last bin, the last value is returned. Maybe the last value should be zero.
-
-    This should normally not be used in Python. It is here for debugging the CUDA extension which has an analogous function.
     """
     # interpolate between bins
     idx = jnp.searchsorted(cov_bins, r)
@@ -108,6 +91,3 @@ def _cov_lookup(r, cov_bins, cov_vals):
     c = jnp.where(idx == len(cov_bins), c0, c)
     c = jnp.where(r0 == r1, c0, c)
     return c
-
-
-

@@ -6,9 +6,14 @@ import jax.numpy as jnp
 from jax.tree_util import Partial, register_dataclass
 from jax import Array
 
-# import hugegp_cuda
-
 from .tree import build_tree, query_preceding_neighbors, query_offset_neighbors
+
+try:
+    import hugegp_cuda
+
+    has_cuda = True
+except ImportError:
+    has_cuda = False
 
 
 @register_dataclass
@@ -28,6 +33,7 @@ class Graph:
         indices: Original indices of the points of shape ``(N,)``. Can be ``None``.
         reverse_indices: Indices to reorder points back to original order of shape ``(N,)``. Can be ``None``.
     """
+
     points: Array
     neighbors: Array
     offsets: Tuple[int, ...] = field(metadata=dict(static=True))
@@ -64,16 +70,7 @@ def check_graph(graph: Graph):
     assert jnp.all(max_neighbors < offsets[offsets_index]), "Neighbors must not be in the same batch"
 
 
-def build_graph(
-    points: Array, *, n0: int, k: int, strict: bool = True, factor: float = 1.5, max_batch: int | None = None
-) -> Graph:
-    if strict:
-        return build_strict_graph(points, n0=n0, k=k)
-    else:
-        return build_lazy_graph(points, n0=n0, k=k, factor=factor, max_batch=max_batch)
-
-
-def build_strict_graph(points: Array, *, n0: int, k: int) -> Graph:
+def build_graph(points: Array, *, n0: int, k: int, cuda: bool = False) -> Graph:
     """
     Build a graph such that all preceding neighbors are strictly included. This is the most accurate
     but is slower to build due to a single required serial pass through the points. The depth of the
@@ -83,6 +80,7 @@ def build_strict_graph(points: Array, *, n0: int, k: int) -> Graph:
         points: The input points of shape ``(N, d)``.
         n0: The number of initial points.
         k: The number of neighbors to include.
+        cuda: Whether to use optional CUDA extension, if installed. Will still use CUDA GPU via JAX if available. Default is ``False`` but recommended if possible for performance.
 
     Returns:
         A ``Graph`` dataclass containing ``points``, ``neighbors``, ``offsets``, and ``indices``.
@@ -90,18 +88,18 @@ def build_strict_graph(points: Array, *, n0: int, k: int) -> Graph:
     # Compute depth
     points, split_dims, indices = build_tree(points)
     neighbors, _ = query_preceding_neighbors(points, split_dims, k=k, n0=n0)
-    depth = _compute_depth(neighbors, n0=n0)
+    depths = compute_depths(neighbors, n0=n0, cuda=cuda)
 
     # Reorder by depth
-    depth_order = jnp.argsort(depth)
+    depth_order = jnp.argsort(depths)
     points = points[depth_order]
     indices = indices[depth_order]
-    depth = depth[depth_order]
+    depths = depths[depth_order]
     neighbors = jnp.argsort(depth_order)[neighbors[depth_order[n0:] - n0]]  # first n0 stay in order
-    offsets = jnp.searchsorted(depth, jnp.arange(1, jnp.max(depth) + 1))
+    offsets = jnp.searchsorted(depths, jnp.arange(1, jnp.max(depths) + 2))
     offsets = tuple(int(o) for o in offsets)
 
-    return Graph(points, neighbors, offsets, indices, jnp.argsort(indices))
+    return Graph(points, neighbors[:,::-1], offsets, indices, jnp.argsort(indices))
 
 
 def build_lazy_graph(points: Array, *, n0: int, k: int, factor: float = 1.5, max_batch: int | None = None) -> Graph:
@@ -130,18 +128,24 @@ def build_lazy_graph(points: Array, *, n0: int, k: int, factor: float = 1.5, max
 
     points, split_dims, indices = build_tree(points)
     neighbors, _ = query_offset_neighbors(points, split_dims, offsets=offsets, k=k)
-    return Graph(points, neighbors, offsets, indices, jnp.argsort(indices))
+    return Graph(points, neighbors[:,::-1], offsets, indices, jnp.argsort(indices))
 
 
-def _compute_depth(neighbors, *, n0):
-    depth = jnp.zeros(n0 + len(neighbors), dtype=jnp.int32)
+@Partial(jax.jit, static_argnames=("n0", "cuda"))
+def compute_depths(neighbors, *, n0, cuda=False):
+    if cuda:
+        if not has_cuda:
+            raise ImportError("CUDA extension not installed, cannot use cuda=True.")
+        depths = hugegp_cuda.compute_depths(neighbors, n0=n0)
+    else:
+        depths = jnp.zeros(n0 + len(neighbors), dtype=jnp.int32)
 
-    def update(i, depth):
-        depth = depth.at[i].set(1 + jnp.max(depth[neighbors[i - n0]]))
-        return depth
+        def update(i, depths):
+            depths = depths.at[i].set(1 + jnp.max(depths[neighbors[i - n0]]))
+            return depths
 
-    depth = jax.lax.fori_loop(n0, n0 + len(neighbors), update, depth)
-    return depth
+        depths = jax.lax.fori_loop(n0, n0 + len(neighbors), update, depths)
+    return depths
 
 
 # def build_old_strict_graph(points, *, n_initial, k):

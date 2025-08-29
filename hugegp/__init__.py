@@ -1,6 +1,6 @@
 from .tree import build_tree, query_preceding_neighbors, query_offset_neighbors
-from .graph import Graph, check_graph, build_graph, build_strict_graph, build_lazy_graph
-from .covariance import MaternCovariance, compute_matern_covariance, compute_cov_matrix, discretize_covariance
+from .graph import Graph, check_graph, build_graph, build_lazy_graph, compute_depths
+from .covariance import MaternCovariance, compute_matern_covariance, compute_cov_matrix, make_cov_bins
 from .refine import (
     generate,
     generate_inv,
@@ -11,6 +11,12 @@ from .refine import (
     refine,
     refine_inv,
     refine_logdet,
+    generate_jit,
+    generate_inv_jit,
+    generate_logdet_jit,
+    refine_jit,
+    refine_inv_jit,
+    refine_logdet_jit,
 )
 
 __all__ = [
@@ -20,12 +26,12 @@ __all__ = [
     "Graph",
     "check_graph",
     "build_graph",
-    "build_strict_graph",
     "build_lazy_graph",
+    "compute_depths",
     "MaternCovariance",
     "compute_matern_covariance",
     "compute_cov_matrix",
-    "discretize_covariance",
+    "make_cov_bins",
     "generate",
     "generate_inv",
     "generate_logdet",
@@ -35,4 +41,10 @@ __all__ = [
     "refine",
     "refine_inv",
     "refine_logdet",
+    "generate_jit",
+    "generate_inv_jit",
+    "generate_logdet_jit",
+    "refine_jit",
+    "refine_inv_jit",
+    "refine_logdet_jit",
 ]

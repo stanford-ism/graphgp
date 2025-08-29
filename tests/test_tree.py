@@ -6,10 +6,11 @@ import hugegp as gp
 
 def test_query_preceding():
     n_points = 1000
+    n_dim = 3
     k = 30
     n0 = 30
-    k1 = jr.key(137)
-    original_points = jr.normal(k1, (n_points, 3))
+    k1 = jr.key(1)
+    original_points = jr.normal(k1, (n_points, n_dim))
 
     points, split_dims, indices = gp.build_tree(original_points)
     neighbors, distances = gp.query_preceding_neighbors(points, split_dims, n0=n0, k=k)
@@ -20,5 +21,5 @@ def test_query_preceding():
     true_neighbors = jnp.argsort(pairwise_distance, axis=-1)[n0:,:k]
     true_distances = jnp.linalg.norm(points[n0:,None,:] - points[true_neighbors], axis=-1)
 
-    assert jnp.all(true_neighbors == neighbors)
-    assert jnp.allclose(true_distances, distances)
+    assert jnp.all(true_neighbors == neighbors), "Neighbors do not match"
+    assert jnp.allclose(true_distances, distances), "Distances do not match"

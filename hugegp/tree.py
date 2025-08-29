@@ -7,7 +7,7 @@ from jax import lax
 from jax.tree_util import Partial
 from jax import Array
 
-
+@jax.jit
 def build_tree(points: Array) -> Tuple[Array, Array, Array]:
     """
     Build k-d tree in special order.
@@ -25,8 +25,8 @@ def build_tree(points: Array) -> Tuple[Array, Array, Array]:
         raise ValueError(f"Points must have shape (N, d). Got shape {points.shape}.")
     return _build_tree(points)
 
-
-def query_preceding_neighbors(points: Array, split_dims: Array, *, k: int, n0: int) -> tuple[Array, Array]:
+@Partial(jax.jit, static_argnames=("n0", "k"))
+def query_preceding_neighbors(points: Array, split_dims: Array, *, n0: int, k: int) -> tuple[Array, Array]:
     """
     Query the k-nearest neighbors of each point among the preceding points, starting from point n0.
 
@@ -49,6 +49,7 @@ def query_preceding_neighbors(points: Array, split_dims: Array, *, k: int, n0: i
     return neighbors, distances
 
 
+@Partial(jax.jit, static_argnames=("offsets", "k"))
 def query_offset_neighbors(
     points: Array, split_dims: Array, *, offsets: Tuple[int, ...], k: int
 ) -> tuple[Array, Array]:
