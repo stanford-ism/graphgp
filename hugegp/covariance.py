@@ -21,7 +21,7 @@ class MaternCovariance:
     p: int = field(default=0, metadata=dict(static=True))
     eps: float = field(default=1e-5, metadata=dict(static=True))
 
-    def __call__(self, r: float, *, sigma: float = 1.0, cutoff: float = 1.0):
+    def __call__(self, r: Array, *, sigma: float = 1.0, cutoff: float = 1.0):
         return compute_matern_covariance(r, p=self.p, sigma=sigma, cutoff=cutoff, eps=self.eps)
 
 
@@ -80,6 +80,7 @@ def cov_lookup(r, cov_bins, cov_vals):
     """
     # interpolate between bins
     idx = jnp.searchsorted(cov_bins, r)
+    # return cov_vals[idx]
     r0 = cov_bins[idx - 1]
     r1 = cov_bins[idx]
     c0 = cov_vals[idx - 1]

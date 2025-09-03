@@ -22,7 +22,6 @@ def generate(
     covariance: CovarianceType,
     xi: Array,
     *,
-    reorder: bool = True,
     cuda: bool = False,
 ) -> Array:
     """
@@ -40,17 +39,13 @@ def generate(
         The generated values of shape ``(N,).``
     """
     n0 = len(graph.points) - len(graph.neighbors)
-    if reorder:
-        if graph.indices is None:
-            raise ValueError("Graph must have indices to reorder.")
+    if graph.indices is not None:
         xi = xi[graph.indices]
 
     initial_values = generate_dense(graph.points[:n0], covariance, xi[:n0])
     values = refine(graph.points, graph.neighbors, graph.offsets, covariance, initial_values, xi[n0:], cuda=cuda)
 
-    if reorder:
-        if graph.reverse_indices is None:
-            raise ValueError("Graph must have reverse_indices to reorder.")
+    if graph.reverse_indices is not None:
         values = values[graph.reverse_indices]
     return values
 
@@ -60,23 +55,18 @@ def generate_inv(
     covariance: CovarianceType,
     values: Array,
     *,
-    reorder: bool = True,
     cuda: bool = False,
 ) -> Array:
     """
     Inverse of ``generate``. Ensure that the choice for ``reorder`` is the same. Recommended to JIT compile.
     """
     n0 = len(graph.points) - len(graph.neighbors)
-    if reorder:
-        if graph.indices is None:
-            raise ValueError("Graph must have indices to reorder.")
+    if graph.indices is not None:
         values = values[graph.indices]
     initial_values, xi = refine_inv(graph.points, graph.neighbors, graph.offsets, covariance, values, cuda=cuda)
     initial_xi = generate_dense_inv(graph.points[:n0], covariance, initial_values)
     xi = jnp.concatenate([initial_xi, xi], axis=0)
-    if reorder:
-        if graph.reverse_indices is None:
-            raise ValueError("Graph must have reverse_indices to reorder.")
+    if graph.reverse_indices is not None:
         xi = xi[graph.reverse_indices]
     return xi
 
@@ -268,7 +258,7 @@ def _cuda_process_covariance(covariance):
     return cov_bins, cov_vals
 
 
-generate_jit = jax.jit(generate, static_argnames=("reorder", "cuda"))
+generate_jit = jax.jit(generate, static_argnames=("cuda"))
 generate_inv_jit = jax.jit(generate_inv)
 generate_logdet_jit = jax.jit(generate_logdet)
 

@@ -36,5 +36,6 @@ exclude = ["*.ipynb"]
 [dependency-groups]
 dev = [
     "cmasher>=1.9.2",
+    "cmocean>=4.0.3",
     "pytest>=8.4.1",
 ]

@@ -22,9 +22,10 @@ class Graph:
     """
     Nearest-neighbor dependency graph for Gaussian process generation.
 
-    This object is provided for convenience and to easily mark ``offsets`` as static for JIT compilation.
+    This object is provided for convenient use with ``generate`` and to easily mark ``offsets`` as static for JIT compilation.
     Users who are comfortable with the GraphGP algorithm should feel free to construct their own graphs however they like.
     We provide a function ``check_graph`` to verify that the graph can be used with other GraphGP components.
+    The ``generate_dense`` and ``refine`` functions take raw arrays as arguments if users do not wish to use this object.
 
     Fields:
         points: Modeled points in tree order of shape ``(N, d)``.
@@ -37,8 +38,8 @@ class Graph:
     points: Array
     neighbors: Array
     offsets: Tuple[int, ...] = field(metadata=dict(static=True))
-    indices: Array | None
-    reverse_indices: Array | None
+    indices: Array | None = None
+    reverse_indices: Array | None = None
 
 
 def check_graph(graph: Graph):
