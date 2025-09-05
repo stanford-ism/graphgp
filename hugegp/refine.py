@@ -16,7 +16,6 @@ except ImportError:
     has_cuda = False
 
 
-
 def generate(
     graph: Graph,
     covariance: CovarianceType,
@@ -41,12 +40,10 @@ def generate(
     n0 = len(graph.points) - len(graph.neighbors)
     if graph.indices is not None:
         xi = xi[graph.indices]
-
     initial_values = generate_dense(graph.points[:n0], covariance, xi[:n0])
     values = refine(graph.points, graph.neighbors, graph.offsets, covariance, initial_values, xi[n0:], cuda=cuda)
-
-    if graph.reverse_indices is not None:
-        values = values[graph.reverse_indices]
+    if graph.indices is not None:
+        values = jnp.empty_like(values).at[graph.indices].set(values)
     return values
 
 
@@ -66,14 +63,12 @@ def generate_inv(
     initial_values, xi = refine_inv(graph.points, graph.neighbors, graph.offsets, covariance, values, cuda=cuda)
     initial_xi = generate_dense_inv(graph.points[:n0], covariance, initial_values)
     xi = jnp.concatenate([initial_xi, xi], axis=0)
-    if graph.reverse_indices is not None:
-        xi = xi[graph.reverse_indices]
+    if graph.indices is not None:
+        xi = jnp.empty_like(xi).at[graph.indices].set(xi)
     return xi
 
 
-def generate_logdet(
-    graph: Graph, covariance: CovarianceType, *, cuda: bool = False
-) -> Array:
+def generate_logdet(graph: Graph, covariance: CovarianceType, *, cuda: bool = False) -> Array:
     """
     Log determinant of ``generate``. Recommended to JIT compile.
     """
@@ -82,9 +77,7 @@ def generate_logdet(
     return dense_logdet + refine_logdet(graph.points, graph.neighbors, graph.offsets, covariance, cuda=cuda)
 
 
-def generate_dense(
-    points: Array, covariance: CovarianceType, xi: Array
-) -> Array:
+def generate_dense(points: Array, covariance: CovarianceType, xi: Array) -> Array:
     """
     Generate a GP with a dense Cholesky decomposition. Note that to compare with the GraphGP values,
     the points must be provided in tree order.
@@ -102,9 +95,7 @@ def generate_dense(
     return values
 
 
-def generate_dense_inv(
-    points: Array, covariance: CovarianceType, values: Array
-) -> Array:
+def generate_dense_inv(points: Array, covariance: CovarianceType, values: Array) -> Array:
     """
     Inverse of ``generate_dense``.
     """

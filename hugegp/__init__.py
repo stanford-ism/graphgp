@@ -1,5 +1,5 @@
 from .tree import build_tree, query_preceding_neighbors, query_offset_neighbors
-from .graph import Graph, check_graph, build_graph, build_lazy_graph, compute_depths
+from .graph import Graph, check_graph, build_graph, build_lazy_graph, compute_depths, order_by_depth
 from .covariance import MaternCovariance, compute_matern_covariance, compute_cov_matrix, make_cov_bins
 from .refine import (
     generate,
@@ -28,6 +28,7 @@ __all__ = [
     "build_graph",
     "build_lazy_graph",
     "compute_depths",
+    "order_by_depth",
     "MaternCovariance",
     "compute_matern_covariance",
     "compute_cov_matrix",

@@ -1,0 +1,20 @@
+Running 27 benchmark combinations...
+--------------------------------------------------
+Benchmark 1/27
+n=1000000000, n0=10000, d=3, k=4, cuda=True
+2025-09-04 18:37:42.629819: W external/xla/xla/hlo/transforms/simplifiers/hlo_rematerialization.cc:3021] Can't reduce memory use below 28.11GiB (30183088924 bytes) by rematerialization; only reduced to 59.60GiB (64000000204 bytes), down from 59.60GiB (64000000204 bytes) originally
+2025-09-04 18:37:55.664342: W external/xla/xla/tsl/framework/bfc_allocator.cc:501] Allocator (GPU_0_bfc) ran out of memory trying to allocate 37.25GiB (rounded to 40000002048)requested by op 
+2025-09-04 18:37:55.664747: W external/xla/xla/tsl/framework/bfc_allocator.cc:512] *********************************************************___________________________________________
+E0904 18:37:55.664761 3191419 pjrt_stream_executor_client.cc:2839] Execution of replica 0 failed: RESOURCE_EXHAUSTED: Out of memory while trying to allocate 40000001848 bytes. [tf-allocator-allocation-error='']
+Traceback (most recent call last):
+  File "/users/bendodge/hugegp/benchmark.py", line 255, in <module>
+    main()
+    ~~~~^^
+  File "/users/bendodge/hugegp/benchmark.py", line 219, in main
+    result = run_single_benchmark(test_params)
+  File "/users/bendodge/hugegp/benchmark.py", line 106, in run_single_benchmark
+    points_reordered, split_dims, indices = build_tree(points)
+                                            ~~~~~~~~~~^^^^^^^^
+jaxlib.xla_extension.XlaRuntimeError: RESOURCE_EXHAUSTED: Out of memory while trying to allocate 40000001848 bytes.
+--------------------
+For simplicity, JAX has removed its internal frames from the traceback of the following exception. Set JAX_TRACEBACK_FILTERING=off to include these.

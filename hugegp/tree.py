@@ -7,6 +7,14 @@ from jax import lax
 from jax.tree_util import Partial
 from jax import Array
 
+try:
+    import hugegp_cuda
+
+    has_cuda = True
+except ImportError:
+    has_cuda = False
+
+
 @jax.jit
 def build_tree(points: Array) -> Tuple[Array, Array, Array]:
     """
@@ -25,8 +33,10 @@ def build_tree(points: Array) -> Tuple[Array, Array, Array]:
         raise ValueError(f"Points must have shape (N, d). Got shape {points.shape}.")
     return _build_tree(points)
 
-@Partial(jax.jit, static_argnames=("n0", "k"))
-def query_preceding_neighbors(points: Array, split_dims: Array, *, n0: int, k: int) -> tuple[Array, Array]:
+
+def query_preceding_neighbors(
+    points: Array, split_dims: Array, *, n0: int, k: int, cuda: bool = False
+) -> Array:
     """
     Query the k-nearest neighbors of each point among the preceding points, starting from point n0.
 
@@ -44,15 +54,17 @@ def query_preceding_neighbors(points: Array, split_dims: Array, *, n0: int, k: i
     if n0 < k:
         raise ValueError(f"n0 must be at least k. Got n0={n0}, k={k}.")
     query_indices = jnp.arange(n0, len(points))
-    query_func = Partial(_single_query_neighbors, points, split_dims, k=k)
-    neighbors, distances = jax.vmap(query_func)(query_indices, query_indices)
-    return neighbors, distances
+    return query_neighbors(points, split_dims, query_indices, query_indices, k=k, cuda=cuda)
 
 
-@Partial(jax.jit, static_argnames=("offsets", "k"))
 def query_offset_neighbors(
-    points: Array, split_dims: Array, *, offsets: Tuple[int, ...], k: int
-) -> tuple[Array, Array]:
+    points: Array,
+    split_dims: Array,
+    *,
+    offsets: Tuple[int, ...],
+    k: int,
+    cuda: bool = False,
+) -> Array:
     """
     Query the k-nearest neighbors of each point among points in preceding batches.
 
@@ -70,9 +82,20 @@ def query_offset_neighbors(
     query_indices = jnp.arange(offsets[0], len(points))
     offsets = jnp.asarray(offsets)
     max_indices = offsets[jnp.searchsorted(offsets, query_indices, side="right") - 1]
+    return query_neighbors(points, split_dims, query_indices, max_indices, k=k)
+
+
+@Partial(jax.jit, static_argnames=("k", "cuda"))
+def query_neighbors(
+    points: Array, split_dims: Array, query_indices: Array, max_indices: Array, *, k: int, cuda: bool = False
+) -> Array:
+    if cuda:
+        if not has_cuda:
+            raise ImportError("CUDA extension not installed, cannot use cuda=True.")
+        return hugegp_cuda.query_neighbors(points, split_dims, query_indices, max_indices, k=k)
+
     query_func = Partial(_single_query_neighbors, points, split_dims, k=k)
-    neighbors, distances = jax.vmap(query_func)(query_indices, max_indices)
-    return neighbors, distances
+    return jax.vmap(query_func)(query_indices, max_indices)
 
 
 def _single_query_neighbors(points, split_dims, query_index, max_index, *, k):
@@ -99,9 +122,9 @@ def _single_query_neighbors(points, split_dims, query_index, max_index, *, k):
         points, split_dims, query_index, max_index, update_func, (neighbors, square_distances), jnp.asarray(jnp.inf)
     )
 
-    distances = jnp.linalg.norm(points[neighbors] - points[query_index], axis=-1)  # recompute distances to enable VJP
+    distances = jnp.linalg.norm(points[neighbors] - points[query_index], axis=-1) 
     distances, neighbors = lax.sort((distances, neighbors), dimension=0, num_keys=2)
-    return neighbors, distances
+    return neighbors
 
 
 def _traverse_tree(
@@ -182,7 +205,7 @@ def _build_tree(points):
         # Compute split dimension and extract values along that dimension
         dim_max = jax.ops.segment_max(points, nodes, num_segments=n_points)
         dim_min = jax.ops.segment_min(points, nodes, num_segments=n_points)
-        new_split_dims = jnp.argmax(dim_max - dim_min, axis=-1).astype(jnp.int8)
+        new_split_dims = jnp.argmax(dim_max - dim_min, axis=-1)
         split_dims = jnp.where(array_index < (1 << level) - 1, split_dims, new_split_dims)
         points_along_dim = jnp.squeeze(
             jnp.take_along_axis(points, split_dims[nodes][:, jnp.newaxis], axis=-1),
@@ -200,7 +223,7 @@ def _build_tree(points):
     # Start all points at root and sort into tree at each level
     nodes = jnp.zeros(n_points, dtype=int)
     indices = jnp.arange(n_points, dtype=int)
-    split_dims = -1 * jnp.ones(n_points, dtype=jnp.int8)
+    split_dims = -1 * jnp.ones(n_points, dtype=int)
     (nodes, points, indices, split_dims), _ = lax.scan(step, (nodes, points, indices, split_dims), jnp.arange(n_levels))
     return points, split_dims, indices
 

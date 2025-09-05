@@ -1,0 +1,20 @@
+Running 24 benchmark combinations...
+--------------------------------------------------
+Benchmark 1/24
+n=100000, n0=1000, d=3, k=4, cuda=True
+Traceback (most recent call last):
+  File "/users/bendodge/hugegp/benchmark.py", line 255, in <module>
+    main()
+    ~~~~^^
+  File "/users/bendodge/hugegp/benchmark.py", line 219, in main
+    result = run_single_benchmark(test_params)
+  File "/users/bendodge/hugegp/benchmark.py", line 121, in run_single_benchmark
+    points_final, indices_final, neighbors_final, depths_final = order_by_depth(
+                                                                 ~~~~~~~~~~~~~~^
+        points_reordered, indices, neighbors, depths, test_params["n0"]
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+TypeError: order_by_depth() takes 4 positional arguments but 5 were given
+--------------------
+For simplicity, JAX has removed its internal frames from the traceback of the following exception. Set JAX_TRACEBACK_FILTERING=off to include these.

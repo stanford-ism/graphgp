@@ -1,0 +1,402 @@
+Running 72 benchmark combinations...
+--------------------------------------------------
+Benchmark 1/72
+n=100000, n0=1000, d=3, k=4, cuda=True
+Graph depth: 30, build_tree: 1252.07 ms, query_neighbors: 497.29 ms, compute_depths: 12.70 ms, order_by_depth: 1225.23 ms
+Warmup: 318.81 ms
+Forward pass: 1.33 ± 0.05 ms
+
+Benchmark 2/72
+n=100000, n0=1000, d=3, k=4, cuda=False
+Graph depth: 30, build_tree: 0.34 ms, query_neighbors: 417.85 ms, compute_depths: 0.09 ms, order_by_depth: 32.75 ms
+Warmup: 9329.07 ms
+Forward pass: 6.19 ± 0.09 ms
+
+Benchmark 3/72
+n=100000, n0=1000, d=3, k=4, cuda=True, graph={'strict': False, 'factor': 5.0}
+Graph depth: 4, build_tree: 0.66 ms, query_neighbors: 633.43 ms
+Warmup: 213.02 ms
+Forward pass: 0.75 ± 0.02 ms
+
+Benchmark 4/72
+n=100000, n0=1000, d=3, k=4, cuda=False, graph={'strict': False, 'factor': 5.0}
+Graph depth: 4, build_tree: 0.34 ms, query_neighbors: 423.77 ms
+Warmup: 908.60 ms
+Forward pass: 1.85 ± 0.04 ms
+
+Benchmark 5/72
+n=100000, n0=1000, d=3, k=8, cuda=True
+Graph depth: 53, build_tree: 0.33 ms, query_neighbors: 444.70 ms, compute_depths: 9.41 ms, order_by_depth: 1213.78 ms
+Warmup: 213.83 ms
+Forward pass: 3.32 ± 0.05 ms
+
+Benchmark 6/72
+n=100000, n0=1000, d=3, k=8, cuda=False
+Graph depth: 53, build_tree: 0.62 ms, query_neighbors: 445.41 ms, compute_depths: 0.11 ms, order_by_depth: 54.44 ms
+Warmup: 16595.55 ms
+Forward pass: 12.01 ± 0.04 ms
+
+Benchmark 7/72
+n=100000, n0=1000, d=3, k=8, cuda=True, graph={'strict': False, 'factor': 5.0}
+Graph depth: 4, build_tree: 0.71 ms, query_neighbors: 469.29 ms
+Warmup: 220.70 ms
+Forward pass: 0.86 ± 0.03 ms
+
+Benchmark 8/72
+n=100000, n0=1000, d=3, k=8, cuda=False, graph={'strict': False, 'factor': 5.0}
+Graph depth: 4, build_tree: 0.37 ms, query_neighbors: 452.69 ms
+Warmup: 1033.26 ms
+Forward pass: 3.05 ± 0.04 ms
+
+Benchmark 9/72
+n=100000, n0=1000, d=3, k=16, cuda=True
+Graph depth: 95, build_tree: 0.37 ms, query_neighbors: 485.51 ms, compute_depths: 9.83 ms, order_by_depth: 1376.03 ms
+Warmup: 233.17 ms
+Forward pass: 16.49 ± 0.07 ms
+
+Benchmark 10/72
+n=100000, n0=1000, d=3, k=16, cuda=False
+Graph depth: 95, build_tree: 0.39 ms, query_neighbors: 472.29 ms, compute_depths: 0.10 ms, order_by_depth: 82.12 ms
+Warmup: 34970.49 ms
+Forward pass: 25.76 ± 0.03 ms
+
+Benchmark 11/72
+n=100000, n0=1000, d=3, k=16, cuda=True, graph={'strict': False, 'factor': 5.0}
+Graph depth: 4, build_tree: 0.70 ms, query_neighbors: 533.36 ms
+Warmup: 226.09 ms
+Forward pass: 1.35 ± 0.03 ms
+
+Benchmark 12/72
+n=100000, n0=1000, d=3, k=16, cuda=False, graph={'strict': False, 'factor': 5.0}
+Graph depth: 4, build_tree: 0.58 ms, query_neighbors: 512.50 ms
+Warmup: 1065.34 ms
+Forward pass: 7.67 ± 0.03 ms
+
+Benchmark 13/72
+n=300000, n0=1000, d=3, k=4, cuda=True
+Graph depth: 37, build_tree: 1534.00 ms, query_neighbors: 748.46 ms, compute_depths: 11.06 ms, order_by_depth: 1434.02 ms
+Warmup: 227.19 ms
+Forward pass: 1.44 ± 0.02 ms
+
+Benchmark 14/72
+n=300000, n0=1000, d=3, k=4, cuda=False
+Graph depth: 37, build_tree: 0.51 ms, query_neighbors: 647.82 ms, compute_depths: 0.14 ms, order_by_depth: 116.62 ms
+Warmup: 12569.45 ms
+Forward pass: 9.06 ± 0.06 ms
+
+Benchmark 15/72
+n=300000, n0=1000, d=3, k=4, cuda=True, graph={'strict': False, 'factor': 5.0}
+Graph depth: 5, build_tree: 0.66 ms, query_neighbors: 895.53 ms
+Warmup: 225.49 ms
+Forward pass: 0.85 ± 0.05 ms
+
+Benchmark 16/72
+n=300000, n0=1000, d=3, k=4, cuda=False, graph={'strict': False, 'factor': 5.0}
+Graph depth: 5, build_tree: 0.47 ms, query_neighbors: 667.82 ms
+Warmup: 1223.42 ms
+Forward pass: 3.49 ± 0.02 ms
+
+Benchmark 17/72
+n=300000, n0=1000, d=3, k=8, cuda=True
+Graph depth: 62, build_tree: 0.46 ms, query_neighbors: 705.26 ms, compute_depths: 10.34 ms, order_by_depth: 1436.14 ms
+Warmup: 223.90 ms
+Forward pass: 3.79 ± 0.03 ms
+
+Benchmark 18/72
+n=300000, n0=1000, d=3, k=8, cuda=False
+Graph depth: 62, build_tree: 0.42 ms, query_neighbors: 702.52 ms, compute_depths: 0.14 ms, order_by_depth: 191.83 ms
+Warmup: 19419.40 ms
+Forward pass: 16.73 ± 0.04 ms
+
+Benchmark 19/72
+n=300000, n0=1000, d=3, k=8, cuda=True, graph={'strict': False, 'factor': 5.0}
+Graph depth: 5, build_tree: 0.94 ms, query_neighbors: 749.63 ms
+Warmup: 231.55 ms
+Forward pass: 1.00 ± 0.03 ms
+
+Benchmark 20/72
+n=300000, n0=1000, d=3, k=8, cuda=False, graph={'strict': False, 'factor': 5.0}
+Graph depth: 5, build_tree: 0.49 ms, query_neighbors: 731.87 ms
+Warmup: 1376.71 ms
+Forward pass: 7.05 ± 0.04 ms
+
+Benchmark 21/72
+n=300000, n0=1000, d=3, k=16, cuda=True
+Graph depth: 115, build_tree: 0.49 ms, query_neighbors: 848.35 ms, compute_depths: 10.68 ms, order_by_depth: 1798.19 ms
+Warmup: 240.22 ms
+Forward pass: 20.05 ± 0.10 ms
+
+Benchmark 22/72
+n=300000, n0=1000, d=3, k=16, cuda=False
+Graph depth: 115, build_tree: 0.46 ms, query_neighbors: 817.16 ms, compute_depths: 0.10 ms, order_by_depth: 320.59 ms
+Warmup: 46859.92 ms
+Forward pass: 42.23 ± 0.03 ms
+
+Benchmark 23/72
+n=300000, n0=1000, d=3, k=16, cuda=True, graph={'strict': False, 'factor': 5.0}
+Graph depth: 5, build_tree: 1.64 ms, query_neighbors: 874.67 ms
+Warmup: 251.05 ms
+Forward pass: 1.96 ± 0.04 ms
+
+Benchmark 24/72
+n=300000, n0=1000, d=3, k=16, cuda=False, graph={'strict': False, 'factor': 5.0}
+Graph depth: 5, build_tree: 0.44 ms, query_neighbors: 830.73 ms
+Warmup: 1397.91 ms
+Forward pass: 20.97 ± 0.06 ms
+
+Benchmark 25/72
+n=1000000, n0=1000, d=3, k=4, cuda=True
+Graph depth: 42, build_tree: 1686.30 ms, query_neighbors: 968.91 ms, compute_depths: 11.52 ms, order_by_depth: 1600.59 ms
+Warmup: 232.16 ms
+Forward pass: 1.66 ± 0.04 ms
+
+Benchmark 26/72
+n=1000000, n0=1000, d=3, k=4, cuda=False
+Graph depth: 42, build_tree: 0.48 ms, query_neighbors: 896.56 ms, compute_depths: 0.10 ms, order_by_depth: 431.75 ms
+Warmup: 14433.09 ms
+Forward pass: 15.07 ± 0.06 ms
+
+Benchmark 27/72
+n=1000000, n0=1000, d=3, k=4, cuda=True, graph={'strict': False, 'factor': 5.0}
+Graph depth: 6, build_tree: 0.81 ms, query_neighbors: 1177.69 ms
+Warmup: 228.16 ms
+Forward pass: 0.96 ± 0.03 ms
+
+Benchmark 28/72
+n=1000000, n0=1000, d=3, k=4, cuda=False, graph={'strict': False, 'factor': 5.0}
+Graph depth: 6, build_tree: 0.55 ms, query_neighbors: 978.48 ms
+Warmup: 1574.17 ms
+Forward pass: 9.03 ± 0.03 ms
+
+Benchmark 29/72
+n=1000000, n0=1000, d=3, k=8, cuda=True
+Graph depth: 74, build_tree: 0.55 ms, query_neighbors: 1064.65 ms, compute_depths: 12.17 ms, order_by_depth: 1625.07 ms
+Warmup: 225.53 ms
+Forward pass: 4.62 ± 0.03 ms
+
+Benchmark 30/72
+n=1000000, n0=1000, d=3, k=8, cuda=False
+Graph depth: 74, build_tree: 0.50 ms, query_neighbors: 1099.42 ms, compute_depths: 0.11 ms, order_by_depth: 757.45 ms
+Warmup: 25306.10 ms
+Forward pass: 32.05 ± 0.08 ms
+
+Benchmark 31/72
+n=1000000, n0=1000, d=3, k=8, cuda=True, graph={'strict': False, 'factor': 5.0}
+Graph depth: 6, build_tree: 1.08 ms, query_neighbors: 1167.02 ms
+Warmup: 235.85 ms
+Forward pass: 1.46 ± 0.02 ms
+
+Benchmark 32/72
+n=1000000, n0=1000, d=3, k=8, cuda=False, graph={'strict': False, 'factor': 5.0}
+Graph depth: 6, build_tree: 0.59 ms, query_neighbors: 1163.42 ms
+Warmup: 1709.32 ms
+Forward pass: 20.52 ± 0.04 ms
+
+Benchmark 33/72
+n=1000000, n0=1000, d=3, k=16, cuda=True
+Graph depth: 137, build_tree: 0.55 ms, query_neighbors: 1407.39 ms, compute_depths: 11.68 ms, order_by_depth: 1462.77 ms
+Warmup: 283.30 ms
+Forward pass: 24.64 ± 0.07 ms
+
+Benchmark 34/72
+n=1000000, n0=1000, d=3, k=16, cuda=False
+Graph depth: 137, build_tree: 0.55 ms, query_neighbors: 1386.77 ms, compute_depths: 0.11 ms, order_by_depth: 1178.34 ms
+Warmup: 61503.33 ms
+Forward pass: 92.99 ± 0.07 ms
+
+Benchmark 35/72
+n=1000000, n0=1000, d=3, k=16, cuda=True, graph={'strict': False, 'factor': 5.0}
+Graph depth: 6, build_tree: 1.48 ms, query_neighbors: 1574.25 ms
+Warmup: 244.07 ms
+Forward pass: 3.99 ± 0.08 ms
+
+Benchmark 36/72
+n=1000000, n0=1000, d=3, k=16, cuda=False, graph={'strict': False, 'factor': 5.0}
+Graph depth: 6, build_tree: 0.56 ms, query_neighbors: 1503.31 ms
+Warmup: 1818.83 ms
+Forward pass: 66.11 ± 0.04 ms
+
+Benchmark 37/72
+n=3000000, n0=1000, d=3, k=4, cuda=True
+Graph depth: 49, build_tree: 1980.59 ms, query_neighbors: 2763.08 ms, compute_depths: 12.08 ms, order_by_depth: 2009.71 ms
+Warmup: 1162.14 ms
+Forward pass: 2.30 ± 0.04 ms
+
+Benchmark 38/72
+n=3000000, n0=1000, d=3, k=4, cuda=False
+Graph depth: 49, build_tree: 0.78 ms, query_neighbors: 2757.58 ms, compute_depths: 0.13 ms, order_by_depth: 1388.20 ms
+Warmup: 16638.77 ms
+Forward pass: 31.52 ± 0.06 ms
+
+Benchmark 39/72
+n=3000000, n0=1000, d=3, k=4, cuda=True, graph={'strict': False, 'factor': 5.0}
+Graph depth: 6, build_tree: 0.70 ms, query_neighbors: 3027.96 ms
+Warmup: 232.32 ms
+Forward pass: 1.38 ± 0.06 ms
+
+Benchmark 40/72
+n=3000000, n0=1000, d=3, k=4, cuda=False, graph={'strict': False, 'factor': 5.0}
+Graph depth: 6, build_tree: 0.66 ms, query_neighbors: 2826.16 ms
+Warmup: 1635.38 ms
+Forward pass: 24.87 ± 0.05 ms
+
+Benchmark 41/72
+n=3000000, n0=1000, d=3, k=8, cuda=True
+Graph depth: 86, build_tree: 0.64 ms, query_neighbors: 3136.96 ms, compute_depths: 12.31 ms, order_by_depth: 2665.73 ms
+Warmup: 237.23 ms
+Forward pass: 6.42 ± 0.03 ms
+
+Benchmark 42/72
+n=3000000, n0=1000, d=3, k=8, cuda=False
+Graph depth: 86, build_tree: 0.65 ms, query_neighbors: 3122.08 ms, compute_depths: 0.12 ms, order_by_depth: 2324.59 ms
+Warmup: 32771.20 ms
+Forward pass: 73.32 ± 0.04 ms
+
+Benchmark 43/72
+n=3000000, n0=1000, d=3, k=8, cuda=True, graph={'strict': False, 'factor': 5.0}
+Graph depth: 6, build_tree: 1.26 ms, query_neighbors: 3332.41 ms
+Warmup: 244.55 ms
+Forward pass: 2.70 ± 0.03 ms
+
+Benchmark 44/72
+n=3000000, n0=1000, d=3, k=8, cuda=False, graph={'strict': False, 'factor': 5.0}
+Graph depth: 6, build_tree: 0.71 ms, query_neighbors: 3332.25 ms
+Warmup: 1817.80 ms
+Forward pass: 57.51 ± 0.07 ms
+
+Benchmark 45/72
+n=3000000, n0=1000, d=3, k=16, cuda=True
+Graph depth: 160, build_tree: 0.74 ms, query_neighbors: 4055.94 ms, compute_depths: 13.70 ms, order_by_depth: 3900.06 ms
+Warmup: 264.17 ms
+Forward pass: 33.33 ± 0.11 ms
+
+Benchmark 46/72
+n=3000000, n0=1000, d=3, k=16, cuda=False
+Graph depth: 160, build_tree: 1.16 ms, query_neighbors: 4027.78 ms, compute_depths: 0.13 ms, order_by_depth: 3568.99 ms
+Warmup: 79715.32 ms
+Forward pass: 230.32 ± 0.13 ms
+
+Benchmark 47/72
+n=3000000, n0=1000, d=3, k=16, cuda=True, graph={'strict': False, 'factor': 5.0}
+Graph depth: 6, build_tree: 3.90 ms, query_neighbors: 4155.56 ms
+Warmup: 268.17 ms
+Forward pass: 9.63 ± 0.04 ms
+
+Benchmark 48/72
+n=3000000, n0=1000, d=3, k=16, cuda=False, graph={'strict': False, 'factor': 5.0}
+Graph depth: 6, build_tree: 0.64 ms, query_neighbors: 4131.55 ms
+Warmup: 2029.52 ms
+Forward pass: 193.70 ± 0.07 ms
+
+Benchmark 49/72
+n=10000000, n0=1000, d=3, k=4, cuda=True
+Graph depth: 58, build_tree: 2300.44 ms, query_neighbors: 8333.06 ms, compute_depths: 14.83 ms, order_by_depth: 5443.05 ms
+Warmup: 236.87 ms
+Forward pass: 4.78 ± 0.03 ms
+
+Benchmark 50/72
+n=10000000, n0=1000, d=3, k=4, cuda=False
+Graph depth: 58, build_tree: 0.76 ms, query_neighbors: 8275.47 ms, compute_depths: 0.14 ms, order_by_depth: 5116.12 ms
+Warmup: 20166.26 ms
+Forward pass: 89.04 ± 0.08 ms
+
+Benchmark 51/72
+n=10000000, n0=1000, d=3, k=4, cuda=True, graph={'strict': False, 'factor': 5.0}
+Graph depth: 7, build_tree: 1.50 ms, query_neighbors: 8836.17 ms
+Warmup: 241.62 ms
+Forward pass: 3.20 ± 0.03 ms
+
+Benchmark 52/72
+n=10000000, n0=1000, d=3, k=4, cuda=False, graph={'strict': False, 'factor': 5.0}
+Graph depth: 7, build_tree: 0.89 ms, query_neighbors: 8668.39 ms
+Warmup: 2130.51 ms
+Forward pass: 79.66 ± 0.04 ms
+
+Benchmark 53/72
+n=10000000, n0=1000, d=3, k=8, cuda=True
+Graph depth: 97, build_tree: 0.86 ms, query_neighbors: 10301.47 ms, compute_depths: 17.22 ms, order_by_depth: 8919.26 ms
+Warmup: 278.65 ms
+Forward pass: 13.19 ± 0.09 ms
+
+Benchmark 54/72
+n=10000000, n0=1000, d=3, k=8, cuda=False
+Graph depth: 97, build_tree: 1.46 ms, query_neighbors: 10305.16 ms, compute_depths: 0.16 ms, order_by_depth: 8521.06 ms
+Warmup: 40495.98 ms
+Forward pass: 210.18 ± 0.08 ms
+
+Benchmark 55/72
+n=10000000, n0=1000, d=3, k=8, cuda=True, graph={'strict': False, 'factor': 5.0}
+Graph depth: 7, build_tree: 1.72 ms, query_neighbors: 10232.85 ms
+Warmup: 255.21 ms
+Forward pass: 7.94 ± 0.04 ms
+
+Benchmark 56/72
+n=10000000, n0=1000, d=3, k=8, cuda=False, graph={'strict': False, 'factor': 5.0}
+Graph depth: 7, build_tree: 1.05 ms, query_neighbors: 10336.21 ms
+Warmup: 2350.98 ms
+Forward pass: 188.28 ± 0.05 ms
+
+Benchmark 57/72
+n=10000000, n0=1000, d=3, k=16, cuda=True
+Graph depth: 187, build_tree: 1.61 ms, query_neighbors: 14548.40 ms, compute_depths: 14.62 ms, order_by_depth: 13572.36 ms
+Warmup: 295.57 ms
+Forward pass: 59.36 ± 0.05 ms
+
+Benchmark 58/72
+n=10000000, n0=1000, d=3, k=16, cuda=False
+Graph depth: 187, build_tree: 0.88 ms, query_neighbors: 14504.40 ms, compute_depths: 0.14 ms, order_by_depth: 13134.25 ms
+Warmup: 99595.32 ms
+Forward pass: 696.61 ± 0.07 ms
+
+Benchmark 59/72
+n=10000000, n0=1000, d=3, k=16, cuda=True, graph={'strict': False, 'factor': 5.0}
+Graph depth: 7, build_tree: 1.75 ms, query_neighbors: 13755.77 ms
+Warmup: 284.88 ms
+Forward pass: 30.96 ± 0.06 ms
+
+Benchmark 60/72
+n=10000000, n0=1000, d=3, k=16, cuda=False, graph={'strict': False, 'factor': 5.0}
+Graph depth: 7, build_tree: 0.91 ms, query_neighbors: 13737.86 ms
+Warmup: 2897.74 ms
+Forward pass: 642.48 ± 0.08 ms
+
+Benchmark 61/72
+n=30000000, n0=1000, d=3, k=4, cuda=True
+Graph depth: 64, build_tree: 2444.33 ms, query_neighbors: 24542.03 ms, compute_depths: 17.41 ms, order_by_depth: 19696.47 ms
+Warmup: 258.31 ms
+Forward pass: 12.62 ± 0.02 ms
+
+Benchmark 62/72
+n=30000000, n0=1000, d=3, k=4, cuda=True, graph={'strict': False, 'factor': 5.0}
+Graph depth: 8, build_tree: 1.28 ms, query_neighbors: 25230.61 ms
+Warmup: 263.47 ms
+Forward pass: 9.28 ± 0.06 ms
+
+Benchmark 63/72
+n=30000000, n0=1000, d=3, k=8, cuda=True
+Graph depth: 113, build_tree: 1.31 ms, query_neighbors: 31634.52 ms, compute_depths: 16.81 ms, order_by_depth: 31746.51 ms
+Warmup: 338.54 ms
+Forward pass: 33.31 ± 0.05 ms
+
+Benchmark 64/72
+n=30000000, n0=1000, d=3, k=8, cuda=True, graph={'strict': False, 'factor': 5.0}
+Graph depth: 8, build_tree: 1.61 ms, query_neighbors: 31084.14 ms
+Warmup: 271.38 ms
+Forward pass: 23.91 ± 0.06 ms
+
+Benchmark 65/72
+n=30000000, n0=1000, d=3, k=16, cuda=True
+Graph depth: 210, build_tree: 1.93 ms, query_neighbors: 42887.74 ms, compute_depths: 21.62 ms, order_by_depth: 48647.89 ms
+Warmup: 359.17 ms
+Forward pass: 130.40 ± 0.05 ms
+
+Benchmark 66/72
+n=30000000, n0=1000, d=3, k=16, cuda=True, graph={'strict': False, 'factor': 5.0}
+Graph depth: 8, build_tree: 1.71 ms, query_neighbors: 42115.23 ms
+Warmup: 339.41 ms
+Forward pass: 91.98 ± 0.02 ms
+
+Benchmark 67/72
+n=100000000, n0=1000, d=3, k=4, cuda=True
+/cm/local/apps/slurm/var/spool/job89090/slurm_script: line 17: 1252805 Killed                  python benchmark.py --config benchmarks/scaling_config.json --output output/scaling_results.json
+slurmstepd: error: Detected 1 oom_kill event in StepId=89090.batch. Some of the step tasks have been OOM Killed.

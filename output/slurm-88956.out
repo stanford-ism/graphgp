@@ -1,0 +1,69 @@
+Running 36 benchmark combinations...
+--------------------------------------------------
+Benchmark 1/36
+n=100000, n0=100, d=3, k=4, cuda=True
+Graph depth: 42, Mean time: 1.11 ms
+
+Benchmark 2/36
+n=100000, n0=100, d=3, k=4, cuda=True, graph={'strict': False, 'factor': 5.0}
+Graph depth: 6, Mean time: 0.39 ms
+
+Benchmark 3/36
+n=100000, n0=100, d=3, k=8, cuda=True
+Graph depth: 72, Mean time: 3.70 ms
+
+Benchmark 4/36
+n=100000, n0=100, d=3, k=8, cuda=True, graph={'strict': False, 'factor': 5.0}
+Graph depth: 6, Mean time: 0.52 ms
+
+Benchmark 5/36
+n=100000, n0=100, d=3, k=16, cuda=True
+Graph depth: 139, Mean time: 22.20 ms
+
+Benchmark 6/36
+n=100000, n0=100, d=3, k=16, cuda=True, graph={'strict': False, 'factor': 5.0}
+Graph depth: 6, Mean time: 1.25 ms
+
+Benchmark 7/36
+n=1000000, n0=100, d=3, k=4, cuda=True
+Graph depth: 52, Mean time: 1.47 ms
+
+Benchmark 8/36
+n=1000000, n0=100, d=3, k=4, cuda=True, graph={'strict': False, 'factor': 5.0}
+Graph depth: 7, Mean time: 0.55 ms
+
+Benchmark 9/36
+n=1000000, n0=100, d=3, k=8, cuda=True
+Graph depth: 96, Mean time: 5.23 ms
+
+Benchmark 10/36
+n=1000000, n0=100, d=3, k=8, cuda=True, graph={'strict': False, 'factor': 5.0}
+Graph depth: 7, Mean time: 1.11 ms
+
+Benchmark 11/36
+n=1000000, n0=100, d=3, k=16, cuda=True
+Graph depth: 176, Mean time: 29.78 ms
+
+Benchmark 12/36
+n=1000000, n0=100, d=3, k=16, cuda=True, graph={'strict': False, 'factor': 5.0}
+Graph depth: 7, Mean time: 3.81 ms
+
+Benchmark 13/36
+n=10000000, n0=100, d=3, k=4, cuda=True
+Graph depth: 68, Mean time: 4.49 ms
+
+Benchmark 14/36
+n=10000000, n0=100, d=3, k=4, cuda=True, graph={'strict': False, 'factor': 5.0}
+Graph depth: 9, Mean time: 2.80 ms
+
+Benchmark 15/36
+n=10000000, n0=100, d=3, k=8, cuda=True
+Graph depth: 116, Mean time: 13.65 ms
+
+Benchmark 16/36
+n=10000000, n0=100, d=3, k=8, cuda=True, graph={'strict': False, 'factor': 5.0}
+Graph depth: 9, Mean time: 7.63 ms
+
+Benchmark 17/36
+n=10000000, n0=100, d=3, k=16, cuda=True
+slurmstepd: error: *** JOB 88956 ON n07 CANCELLED AT 2025-09-03T17:53:09 ***

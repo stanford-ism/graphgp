@@ -1,0 +1,103 @@
+Running 24 benchmark combinations...
+--------------------------------------------------
+Benchmark 1/24
+n=100000, n0=1000, d=3, k=4, cuda=True
+Graph depth: 30, build_tree: 1591.25 ms, query_neighbors: 495.66 ms, compute_depths: 37.03 ms, order_by_depth: 1109.91 ms
+Compiled memory: 30.9 MB
+Warmup: 16.48 ms
+Forward pass: 1.28 ± 0.04 ms
+
+Benchmark 2/24
+n=100000, n0=1000, d=3, k=8, cuda=True
+Graph depth: 53, build_tree: 0.43 ms, query_neighbors: 493.27 ms, compute_depths: 14.26 ms, order_by_depth: 938.93 ms
+Compiled memory: 32.4 MB
+Warmup: 12.56 ms
+Forward pass: 3.34 ± 0.11 ms
+
+Benchmark 3/24
+n=100000, n0=1000, d=3, k=16, cuda=True
+Graph depth: 95, build_tree: 0.64 ms, query_neighbors: 517.16 ms, compute_depths: 11.94 ms, order_by_depth: 1093.53 ms
+Compiled memory: 35.4 MB
+Warmup: 22.64 ms
+Forward pass: 16.33 ± 0.04 ms
+
+Benchmark 4/24
+n=300000, n0=1000, d=3, k=4, cuda=True
+Graph depth: 37, build_tree: 1866.29 ms, query_neighbors: 609.48 ms, compute_depths: 12.39 ms, order_by_depth: 1086.57 ms
+Compiled memory: 39.3 MB
+Warmup: 7.43 ms
+Forward pass: 1.44 ± 0.02 ms
+
+Benchmark 5/24
+n=300000, n0=1000, d=3, k=8, cuda=True
+Graph depth: 62, build_tree: 0.48 ms, query_neighbors: 646.50 ms, compute_depths: 12.50 ms, order_by_depth: 1119.44 ms
+Compiled memory: 43.8 MB
+Warmup: 11.13 ms
+Forward pass: 3.83 ± 0.06 ms
+
+Benchmark 6/24
+n=300000, n0=1000, d=3, k=16, cuda=True
+Graph depth: 115, build_tree: 0.84 ms, query_neighbors: 767.86 ms, compute_depths: 13.17 ms, order_by_depth: 1612.33 ms
+Compiled memory: 53.0 MB
+Warmup: 26.04 ms
+Forward pass: 19.92 ± 0.07 ms
+
+Benchmark 7/24
+n=1000000, n0=1000, d=3, k=4, cuda=True
+Graph depth: 42, build_tree: 2027.98 ms, query_neighbors: 774.70 ms, compute_depths: 13.63 ms, order_by_depth: 1187.20 ms
+Compiled memory: 64.8 MB
+Warmup: 34.23 ms
+Forward pass: 1.65 ± 0.02 ms
+
+Benchmark 8/24
+n=1000000, n0=1000, d=3, k=8, cuda=True
+Graph depth: 74, build_tree: 0.58 ms, query_neighbors: 873.99 ms, compute_depths: 12.74 ms, order_by_depth: 1266.48 ms
+Compiled memory: 80.1 MB
+Warmup: 10.85 ms
+Forward pass: 4.62 ± 0.03 ms
+
+Benchmark 9/24
+n=1000000, n0=1000, d=3, k=16, cuda=True
+Graph depth: 137, build_tree: 0.53 ms, query_neighbors: 1177.37 ms, compute_depths: 15.31 ms, order_by_depth: 1310.49 ms
+Compiled memory: 110.6 MB
+Warmup: 30.91 ms
+Forward pass: 24.52 ± 0.07 ms
+
+Benchmark 10/24
+n=3000000, n0=1000, d=3, k=4, cuda=True
+Graph depth: 49, build_tree: 2412.85 ms, query_neighbors: 1309.16 ms, compute_depths: 15.47 ms, order_by_depth: 1717.24 ms
+Compiled memory: 148.8 MB
+Warmup: 9.03 ms
+Forward pass: 2.36 ± 0.07 ms
+
+Benchmark 11/24
+n=3000000, n0=1000, d=3, k=8, cuda=True
+Graph depth: 86, build_tree: 1.14 ms, query_neighbors: 1674.85 ms, compute_depths: 13.57 ms, order_by_depth: 2688.02 ms
+Compiled memory: 194.5 MB
+Warmup: 34.33 ms
+Forward pass: 6.43 ± 0.04 ms
+
+Benchmark 12/24
+n=3000000, n0=1000, d=3, k=16, cuda=True
+Graph depth: 160, build_tree: 0.65 ms, query_neighbors: 2568.43 ms, compute_depths: 15.31 ms, order_by_depth: 3881.16 ms
+Compiled memory: 286.0 MB
+Warmup: 39.29 ms
+Forward pass: 33.20 ± 0.09 ms
+
+Benchmark 13/24
+n=10000000, n0=1000, d=3, k=4, cuda=True
+Graph depth: 58, build_tree: 2760.03 ms, query_neighbors: 3302.52 ms, compute_depths: 15.80 ms, order_by_depth: 5426.40 ms
+Compiled memory: 457.8 MB
+Warmup: 11.25 ms
+Forward pass: 4.78 ± 0.03 ms
+
+Benchmark 14/24
+n=10000000, n0=1000, d=3, k=8, cuda=True
+Graph depth: 97, build_tree: 1.45 ms, query_neighbors: 5314.04 ms, compute_depths: 14.21 ms, order_by_depth: 8818.68 ms
+Compiled memory: 610.3 MB
+Warmup: 19.14 ms
+Forward pass: 13.10 ± 0.03 ms
+
+Benchmark 15/24
+n=10000000, n0=1000, d=3, k=16, cuda=True
+slurmstepd: error: *** JOB 89163 ON n01 CANCELLED AT 2025-09-04T16:36:06 ***

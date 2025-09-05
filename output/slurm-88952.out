@@ -1,0 +1,138 @@
+Running 36 benchmark combinations...
+--------------------------------------------------
+Benchmark 1/36
+n=100000, n0=5000, d=3, k=4, cuda=True
+2025-09-03 17:29:31.006988: W external/xla/xla/service/gpu/autotuning/gemm_fusion_autotuner.cc:1117] Compiling 33 configs for gemm_fusion_dot on a single thread.
+Graph depth: 22, Mean time: 7.57 ms
+
+Benchmark 2/36
+n=100000, n0=5000, d=3, k=4, cuda=True, graph={'strict': False, 'factor': 5.0}
+Graph depth: 3, Mean time: 7.18 ms
+
+Benchmark 3/36
+n=100000, n0=5000, d=3, k=8, cuda=True
+Graph depth: 35, Mean time: 8.87 ms
+
+Benchmark 4/36
+n=100000, n0=5000, d=3, k=8, cuda=True, graph={'strict': False, 'factor': 5.0}
+Graph depth: 3, Mean time: 7.25 ms
+
+Benchmark 5/36
+n=100000, n0=5000, d=3, k=16, cuda=True
+Graph depth: 64, Mean time: 18.01 ms
+
+Benchmark 6/36
+n=100000, n0=5000, d=3, k=16, cuda=True, graph={'strict': False, 'factor': 5.0}
+Graph depth: 3, Mean time: 7.63 ms
+
+Benchmark 7/36
+n=1000000, n0=5000, d=3, k=4, cuda=True
+Graph depth: 33, Mean time: 7.91 ms
+
+Benchmark 8/36
+n=1000000, n0=5000, d=3, k=4, cuda=True, graph={'strict': False, 'factor': 5.0}
+Graph depth: 5, Mean time: 7.37 ms
+
+Benchmark 9/36
+n=1000000, n0=5000, d=3, k=8, cuda=True
+Graph depth: 58, Mean time: 10.29 ms
+
+Benchmark 10/36
+n=1000000, n0=5000, d=3, k=8, cuda=True, graph={'strict': False, 'factor': 5.0}
+Graph depth: 5, Mean time: 7.85 ms
+
+Benchmark 11/36
+n=1000000, n0=5000, d=3, k=16, cuda=True
+Graph depth: 108, Mean time: 26.54 ms
+
+Benchmark 12/36
+n=1000000, n0=5000, d=3, k=16, cuda=True, graph={'strict': False, 'factor': 5.0}
+Graph depth: 5, Mean time: 10.26 ms
+
+Benchmark 13/36
+n=10000000, n0=5000, d=3, k=4, cuda=True
+Graph depth: 48, Mean time: 11.03 ms
+
+Benchmark 14/36
+n=10000000, n0=5000, d=3, k=4, cuda=True, graph={'strict': False, 'factor': 5.0}
+Graph depth: 6, Mean time: 9.61 ms
+
+Benchmark 15/36
+n=10000000, n0=5000, d=3, k=8, cuda=True
+Graph depth: 83, Mean time: 18.95 ms
+
+Benchmark 16/36
+n=10000000, n0=5000, d=3, k=8, cuda=True, graph={'strict': False, 'factor': 5.0}
+Graph depth: 6, Mean time: 14.30 ms
+
+Benchmark 17/36
+n=10000000, n0=5000, d=3, k=16, cuda=True
+Graph depth: 157, Mean time: 61.15 ms
+
+Benchmark 18/36
+n=10000000, n0=5000, d=3, k=16, cuda=True, graph={'strict': False, 'factor': 5.0}
+Graph depth: 6, Mean time: 37.02 ms
+
+Benchmark 19/36
+n=100000, n0=5000, d=3, k=4, cuda=False
+Graph depth: 22, Mean time: 11.51 ms
+
+Benchmark 20/36
+n=100000, n0=5000, d=3, k=4, cuda=False, graph={'strict': False, 'factor': 5.0}
+Graph depth: 3, Mean time: 8.13 ms
+
+Benchmark 21/36
+n=100000, n0=5000, d=3, k=8, cuda=False
+Graph depth: 35, Mean time: 15.24 ms
+
+Benchmark 22/36
+n=100000, n0=5000, d=3, k=8, cuda=False, graph={'strict': False, 'factor': 5.0}
+Graph depth: 3, Mean time: 9.20 ms
+
+Benchmark 23/36
+n=100000, n0=5000, d=3, k=16, cuda=False
+Graph depth: 64, Mean time: 26.25 ms
+
+Benchmark 24/36
+n=100000, n0=5000, d=3, k=16, cuda=False, graph={'strict': False, 'factor': 5.0}
+Graph depth: 3, Mean time: 13.70 ms
+
+Benchmark 25/36
+n=1000000, n0=5000, d=3, k=4, cuda=False
+Graph depth: 33, Mean time: 19.90 ms
+
+Benchmark 26/36
+n=1000000, n0=5000, d=3, k=4, cuda=False, graph={'strict': False, 'factor': 5.0}
+Graph depth: 5, Mean time: 15.35 ms
+
+Benchmark 27/36
+n=1000000, n0=5000, d=3, k=8, cuda=False
+Graph depth: 58, Mean time: 35.91 ms
+
+Benchmark 28/36
+n=1000000, n0=5000, d=3, k=8, cuda=False, graph={'strict': False, 'factor': 5.0}
+Graph depth: 5, Mean time: 26.51 ms
+
+Benchmark 29/36
+n=1000000, n0=5000, d=3, k=16, cuda=False
+Graph depth: 108, Mean time: 94.21 ms
+
+Benchmark 30/36
+n=1000000, n0=5000, d=3, k=16, cuda=False, graph={'strict': False, 'factor': 5.0}
+Graph depth: 5, Mean time: 71.99 ms
+
+Benchmark 31/36
+n=10000000, n0=5000, d=3, k=4, cuda=False
+Graph depth: 48, Mean time: 94.84 ms
+
+Benchmark 32/36
+n=10000000, n0=5000, d=3, k=4, cuda=False, graph={'strict': False, 'factor': 5.0}
+Graph depth: 6, Mean time: 85.74 ms
+
+Benchmark 33/36
+n=10000000, n0=5000, d=3, k=8, cuda=False
+Graph depth: 83, Mean time: 216.51 ms
+
+Benchmark 34/36
+n=10000000, n0=5000, d=3, k=8, cuda=False, graph={'strict': False, 'factor': 5.0}
+slurmstepd: error: *** JOB 88952 ON n07 CANCELLED AT 2025-09-03T17:36:39 ***

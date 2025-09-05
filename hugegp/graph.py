@@ -5,12 +5,12 @@ import jax
 import jax.numpy as jnp
 from jax.tree_util import Partial, register_dataclass
 from jax import Array
+from jax import lax
 
 from .tree import build_tree, query_preceding_neighbors, query_offset_neighbors
 
 try:
     import hugegp_cuda
-
     has_cuda = True
 except ImportError:
     has_cuda = False
@@ -32,14 +32,12 @@ class Graph:
         neighbors: Indices of the neighbors of shape ``(N - offsets[0], k)``.
         offsets: Tuple of length ``B`` representing the end index of each batch.
         indices: Original indices of the points of shape ``(N,)``. Can be ``None``.
-        reverse_indices: Indices to reorder points back to original order of shape ``(N,)``. Can be ``None``.
     """
 
     points: Array
     neighbors: Array
     offsets: Tuple[int, ...] = field(metadata=dict(static=True))
     indices: Array | None = None
-    reverse_indices: Array | None = None
 
 
 def check_graph(graph: Graph):
@@ -86,21 +84,13 @@ def build_graph(points: Array, *, n0: int, k: int, cuda: bool = False) -> Graph:
     Returns:
         A ``Graph`` dataclass containing ``points``, ``neighbors``, ``offsets``, and ``indices``.
     """
-    # Compute depth
     points, split_dims, indices = build_tree(points)
-    neighbors, _ = query_preceding_neighbors(points, split_dims, k=k, n0=n0)
+    neighbors = query_preceding_neighbors(points, split_dims, n0=n0, k=k, cuda=cuda)
     depths = compute_depths(neighbors, n0=n0, cuda=cuda)
-
-    # Reorder by depth
-    depth_order = jnp.argsort(depths)
-    points = points[depth_order]
-    indices = indices[depth_order]
-    depths = depths[depth_order]
-    neighbors = jnp.argsort(depth_order)[neighbors[depth_order[n0:] - n0]]  # first n0 stay in order
+    points, indices, neighbors, depths = order_by_depth(points, indices, neighbors, depths)
     offsets = jnp.searchsorted(depths, jnp.arange(1, jnp.max(depths) + 2))
     offsets = tuple(int(o) for o in offsets)
-
-    return Graph(points, neighbors[:,::-1], offsets, indices, jnp.argsort(indices))
+    return Graph(points, neighbors[:,::-1], offsets, indices)
 
 
 def build_lazy_graph(points: Array, *, n0: int, k: int, factor: float = 1.5, max_batch: int | None = None) -> Graph:
@@ -129,7 +119,7 @@ def build_lazy_graph(points: Array, *, n0: int, k: int, factor: float = 1.5, max
 
     points, split_dims, indices = build_tree(points)
     neighbors, _ = query_offset_neighbors(points, split_dims, offsets=offsets, k=k)
-    return Graph(points, neighbors[:,::-1], offsets, indices, jnp.argsort(indices))
+    return Graph(points, neighbors[:,::-1], offsets, indices)
 
 
 @Partial(jax.jit, static_argnames=("n0", "cuda"))
@@ -148,6 +138,27 @@ def compute_depths(neighbors, *, n0, cuda=False):
         depths = jax.lax.fori_loop(n0, n0 + len(neighbors), update, depths)
     return depths
 
+@jax.jit
+def order_by_depth(points, indices, neighbors, depths):
+    n0 = len(points) - len(neighbors)
+    order = jnp.argsort(depths)
+    points, indices, depths = points[order], indices[order], depths[order]
+    neighbors = neighbors[order[n0:] - n0]  # first n0 should stay in order
+    inv_order = jnp.arange(len(points), dtype=int)
+    inv_order = inv_order.at[order].set(inv_order)
+    neighbors = inv_order[neighbors]
+    return points, indices, neighbors, depths
+
+
+# @jax.jit
+# def order_by_depth_slow(points, indices, neighbors, depths):
+#     n0 = len(points) - len(neighbors)
+#     depth_order = jnp.argsort(depths)
+#     points = points[depth_order]
+#     indices = indices[depth_order]
+#     depths = depths[depth_order]
+#     neighbors = jnp.argsort(depth_order)[neighbors[depth_order[n0:] - n0]]  # first n0 stay in order
+    # return points, indices, neighbors, depths
 
 # def build_old_strict_graph(points, *, n_initial, k):
 #     n_points = len(points)
