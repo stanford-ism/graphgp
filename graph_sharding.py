@@ -57,4 +57,15 @@ def graph_shard(graph: gp.Graph, n_shards: int, shape: tuple[int, ...] | None = 
             search = active_ids.size > 0
         assert np.all(np.setdiff1d(all_ids, missing, assume_unique=True) == graph_fids) #TODO make debug optional
 
+        #TODO unify with above
+        all_ids = np.concatenate((graph_inv_ids[fids], missing))
+        sorting = np.argsort(all_ids)
+        all_ids = all_ids[sorting]
+        assert np.all(all_ids[:n0] == np.arange(n0))
+        new_points = graph.points[all_ids]
+        new_neighbors = graph.neighbors[all_ids[n0:] - n0]
+        new_offsets = tuple((all_ids >= oo).sum() for oo in graph.offsets)
+        new_graph = gp.Graph(new_points, new_neighbors, new_offsets, indices=sorting)
+        gp.check_graph(new_graph)
+        graphs.append(new_graph)
     return graphs
