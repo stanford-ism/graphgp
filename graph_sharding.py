@@ -2,13 +2,26 @@ import numpy as np
 import jax
 import hugegp as gp
 
-def graph_shard(graph: gp.Graph, n_shards: int, shape: tuple[int, ...] | None = None, axis: int = 0, cuda: bool = False) -> tuple[list[gp.Graph], list[tuple[np.ndarray, tuple[np.ndarray, ...]]]]:
+
+def graph_shard(
+    graph: gp.Graph,
+    n_shards: int,
+    shape: tuple[int, ...] | None = None,
+    axis: int = 0,
+    cuda: bool = False,
+) -> tuple[list[gp.Graph], list[tuple[np.ndarray, ...]]]:
     """Sharding for GraphGP.
-    Builds and returns a list of graphs
+
+    Builds and returns a list of graphs and lists of extra gather indices that
+    build a valid graph for gp generation of each shard. The extra indices are
+    neighbors (and neighbors of neighbors, etc.) that are not included in the
+    tensor shard but need to be included in the graph for gp generation.
+
+    TODO: Not performant for large graphs.
     """
     if cuda:
         raise NotImplementedError("CUDA not implemented")
-        #FIXME inconsistencies in hugegp.tree.query_neighbors vs hugegp-cuda.tree.query_neighbors
+        # FIXME @dodgebc: inconsistent behavior in hugegp.tree.query_neighbors vs hugegp-cuda.tree.query_neighbors
 
     n0 = graph.offsets[0]
 
@@ -19,7 +32,9 @@ def graph_shard(graph: gp.Graph, n_shards: int, shape: tuple[int, ...] | None = 
     if axis >= len(shape):
         raise ValueError(f"Axis {axis} is out of bounds for shape {shape}")
     if shape[axis] % n_shards != 0:
-        raise ValueError(f"Shape {shape} is not divisible by {n_shards} for axis {axis}")
+        raise ValueError(
+            f"Shape {shape} is not divisible by {n_shards} for axis {axis}"
+        )
     shard_size = shape[axis] // n_shards
 
     graph_ids = graph.indices
@@ -32,14 +47,14 @@ def graph_shard(graph: gp.Graph, n_shards: int, shape: tuple[int, ...] | None = 
     gathers = []
     for i in range(n_shards):
         # Create shard in original tensor
-        ids[axis] = np.arange(i*shard_size, (i+1)*shard_size, dtype=np.int_)
-        fids = np.meshgrid(*ids, indexing='ij')
+        ids[axis] = np.arange(i * shard_size, (i + 1) * shard_size, dtype=np.int_)
+        fids = np.meshgrid(*ids, indexing="ij")
         # Ravel into 1D flattened tensor
-        fids = np.ravel_multi_index(fids, shape)
+        fids = np.ravel_multi_index(fids, shape).flatten()
         # Get ids in tree order
         graph_fids = graph_inv_ids[fids]
         graph_fids.sort()
-        assert np.all(np.unique(graph_fids) == graph_fids) #TODO make debug optional
+        assert np.all(np.unique(graph_fids) == graph_fids)  # TODO make debug optional
         # Always include all initial points
         missing = np.setdiff1d(np.arange(n0), graph_fids, assume_unique=True)
         all_ids = np.concatenate((np.arange(n0), graph_fids[graph_fids >= n0]))
@@ -58,18 +73,22 @@ def graph_shard(graph: gp.Graph, n_shards: int, shape: tuple[int, ...] | None = 
             all_ids.sort()
             active_ids = nbrs
             search = active_ids.size > 0
-        assert np.all(np.setdiff1d(all_ids, missing, assume_unique=True) == graph_fids) #TODO make debug optional
+        assert np.all(
+            np.setdiff1d(all_ids, missing, assume_unique=True) == graph_fids
+        )  # TODO make debug optional
         assert np.all(np.unique(missing) == missing)
 
-        #TODO unify with above
+        # TODO unify with above
         all_ids = np.concatenate((graph_inv_ids[fids], missing))
         sorting = np.argsort(all_ids)
         all_ids = all_ids[sorting]
-        print(all_ids)
 
         new_neighbors = graph.neighbors[all_ids[n0:] - n0]
-        #TODO make debug optional
-        assert np.setdiff1d(np.unique(new_neighbors), all_ids, assume_unique=True).size == 0 
+        # TODO make debug optional
+        assert (
+            np.setdiff1d(np.unique(new_neighbors), all_ids, assume_unique=True).size
+            == 0
+        )
         assert np.all(all_ids[:n0] == np.arange(n0))
         assert np.all(np.unique(all_ids) == all_ids)
         new_points = graph.points[all_ids]
@@ -91,3 +110,60 @@ def graph_shard(graph: gp.Graph, n_shards: int, shape: tuple[int, ...] | None = 
         gp.check_graph(new_graph)
         graphs.append(new_graph)
     return graphs, gathers
+
+
+def generate_sharded(
+    graphs: list[gp.Graph],
+    gathers: list[tuple[np.ndarray, ...]],
+    cov,
+    xis,
+    shard_axis=0,
+    cuda=False,
+):
+    assert len(graphs) == len(gathers)
+    nshard = len(graphs)
+    results = []
+    shard_size = xis.shape[shard_axis] // nshard
+    for i, (graph, gather) in enumerate(zip(graphs, gathers)):
+        # TODO replace with jax sharding and all_to_all for gather
+        print("Getting shard", i)
+        xis_shard = xis[i * shard_size : (i + 1) * shard_size]
+        print("with shard size", xis_shard.size)
+        xis_in = jnp.concatenate((xis_shard.flatten(), xis[gather]))
+        print("with gather size", xis_in.size)
+        values_shard = gp.generate(graph, cov, xis_in, cuda=False)
+        values_shard = values_shard[: xis_shard.size].reshape(xis_shard.shape)
+        results.append(values_shard)
+    results = jnp.concatenate(results, axis=shard_axis)
+    return results
+
+
+if __name__ == "__main__":
+    import jax.numpy as jnp
+    # 2D grid test with sharding along one axis
+    npix1 = 128
+    npix2 = 64
+
+    key = jax.random.key(137)
+    k1, k2, k3 = jax.random.split(key, 3)
+    x = jax.random.uniform(k1, (npix1,))
+    x = jnp.sort(x)
+    y = jax.random.uniform(k2, (npix2,))
+    points = jnp.meshgrid(x, y, indexing="ij")
+    points = jnp.stack(points, axis=-1)
+
+    graph = gp.build_graph(points.reshape(-1, 2), n0=128, k=3, cuda=False)
+    xis = jax.random.normal(k3, (npix1, npix2))
+    cov = gp.MaternCovariance(p=1)
+    values = gp.generate(graph, cov, xis.flatten(), cuda=False)
+    values = values.reshape(xis.shape)
+
+    shard_axis = 0
+    nshard = 4
+    graphs, gathers = graph_shard(
+        graph, nshard, shape=xis.shape, axis=shard_axis, cuda=False
+    )
+    results = generate_sharded(
+        graphs, gathers, cov, xis, shard_axis=shard_axis, cuda=False
+    )
+    assert jnp.allclose(results, values)
