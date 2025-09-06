@@ -84,10 +84,15 @@ def build_graph(points: Array, *, n0: int, k: int, cuda: bool = False) -> Graph:
     Returns:
         A ``Graph`` dataclass containing ``points``, ``neighbors``, ``offsets``, and ``indices``.
     """
-    points, split_dims, indices = build_tree(points)
-    neighbors = query_preceding_neighbors(points, split_dims, n0=n0, k=k, cuda=cuda)
-    depths = compute_depths(neighbors, n0=n0, cuda=cuda)
-    points, indices, neighbors, depths = order_by_depth(points, indices, neighbors, depths)
+    if cuda:
+        if not has_cuda:
+            raise ImportError("CUDA extension not installed, cannot use cuda=True.")
+        points, indices, neighbors, depths = hugegp_cuda.build_graph(points, n0=n0, k=k)
+    else:
+        points, split_dims, indices = build_tree(points)
+        neighbors = query_preceding_neighbors(points, split_dims, n0=n0, k=k, cuda=cuda)
+        depths = compute_depths(neighbors, n0=n0, cuda=cuda)
+        points, indices, neighbors, depths = order_by_depth(points, indices, neighbors, depths)
     offsets = jnp.searchsorted(depths, jnp.arange(1, jnp.max(depths) + 2))
     offsets = tuple(int(o) for o in offsets)
     return Graph(points, neighbors[:,::-1], offsets, indices)
@@ -127,7 +132,7 @@ def compute_depths(neighbors, *, n0, cuda=False):
     if cuda:
         if not has_cuda:
             raise ImportError("CUDA extension not installed, cannot use cuda=True.")
-        depths = hugegp_cuda.compute_depths(neighbors, n0=n0)
+        depths = hugegp_cuda.compute_depths(neighbors, n0=n0, n_steps=100)
     else:
         depths = jnp.zeros(n0 + len(neighbors), dtype=jnp.int32)
 
@@ -138,15 +143,20 @@ def compute_depths(neighbors, *, n0, cuda=False):
         depths = jax.lax.fori_loop(n0, n0 + len(neighbors), update, depths)
     return depths
 
-@jax.jit
-def order_by_depth(points, indices, neighbors, depths):
-    n0 = len(points) - len(neighbors)
-    order = jnp.argsort(depths)
-    points, indices, depths = points[order], indices[order], depths[order]
-    neighbors = neighbors[order[n0:] - n0]  # first n0 should stay in order
-    inv_order = jnp.arange(len(points), dtype=int)
-    inv_order = inv_order.at[order].set(inv_order)
-    neighbors = inv_order[neighbors]
+@Partial(jax.jit, static_argnames=("cuda",))
+def order_by_depth(points, indices, neighbors, depths, *, cuda=False):
+    if cuda:
+        if not has_cuda:
+            raise ImportError("CUDA extension not installed, cannot use cuda=True.")
+        points, indices, neighbors, depths = hugegp_cuda.order_by_depth(points, indices, neighbors, depths)
+    else:
+        n0 = len(points) - len(neighbors)
+        order = jnp.argsort(depths)
+        points, indices, depths = points[order], indices[order], depths[order]
+        neighbors = neighbors[order[n0:] - n0]  # first n0 should stay in order
+        inv_order = jnp.arange(len(points), dtype=int)
+        inv_order = inv_order.at[order].set(inv_order)
+        neighbors = inv_order[neighbors]
     return points, indices, neighbors, depths
 
 

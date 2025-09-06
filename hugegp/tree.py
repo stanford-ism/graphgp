@@ -9,14 +9,13 @@ from jax import Array
 
 try:
     import hugegp_cuda
-
     has_cuda = True
 except ImportError:
     has_cuda = False
 
 
-@jax.jit
-def build_tree(points: Array) -> Tuple[Array, Array, Array]:
+@Partial(jax.jit, static_argnames=("cuda",))
+def build_tree(points: Array, cuda: bool = False) -> Tuple[Array, Array, Array]:
     """
     Build k-d tree in special order.
 
@@ -31,6 +30,10 @@ def build_tree(points: Array) -> Tuple[Array, Array, Array]:
     """
     if points.ndim != 2:
         raise ValueError(f"Points must have shape (N, d). Got shape {points.shape}.")
+    if cuda:
+        if not has_cuda:
+            raise ImportError("CUDA extension not installed, cannot use cuda=True.")
+        return hugegp_cuda.build_tree(points)
     return _build_tree(points)
 
 
@@ -53,8 +56,12 @@ def query_preceding_neighbors(
     """
     if n0 < k:
         raise ValueError(f"n0 must be at least k. Got n0={n0}, k={k}.")
+    if cuda:
+        if not has_cuda:
+            raise ImportError("CUDA extension not installed, cannot use cuda=True.")
+        return hugegp_cuda.query_preceding_neighbors(points, split_dims, n0=n0, k=k)
     query_indices = jnp.arange(n0, len(points))
-    return query_neighbors(points, split_dims, query_indices, query_indices, k=k, cuda=cuda)
+    return query_neighbors(points, split_dims, query_indices, query_indices, k=k)
 
 
 def query_offset_neighbors(
@@ -172,28 +179,6 @@ def _traverse_tree(
     return state
 
 
-def _compute_left(current):
-    level = jnp.frexp(current + 1)[1] - 1
-    # level = 32 - lax.clz(current + 1) - 1
-    n_level = 1 << level
-    return current + n_level
-
-
-def _compute_right(current):
-    level = jnp.frexp(current + 1)[1] - 1
-    n_level = 1 << level
-    return current + 2 * n_level
-
-
-def _compute_parent(current):
-    level = jnp.frexp(current + 1)[1] - 1
-    n_above = (1 << level) - 1
-    n_parent_level = 1 << (level - 1)
-    parent = jnp.where(current < n_above + n_parent_level, current - n_parent_level, current - 2 * n_parent_level)
-    parent = jnp.where(current == 0, -1, parent)  # root has no parent
-    return parent
-
-
 def _build_tree(points):
     n_points = len(points)
     n_levels = n_points.bit_length()
@@ -213,7 +198,7 @@ def _build_tree(points):
         )
 
         # Sort the points in each node segment along the splitting dimension
-        nodes, _, indices, perm = lax.sort((nodes, points_along_dim, indices, array_index), dimension=0, num_keys=2)
+        nodes, _, perm, indices = lax.sort((nodes, points_along_dim, array_index, indices), dimension=0, num_keys=3)
         points = points[perm]
 
         # Update nodes
@@ -227,6 +212,29 @@ def _build_tree(points):
     (nodes, points, indices, split_dims), _ = lax.scan(step, (nodes, points, indices, split_dims), jnp.arange(n_levels))
     return points, split_dims, indices
 
+
+def _compute_left(current):
+    level = jnp.frexp(current + 1)[1] - 1
+    # level = 32 - lax.clz(current + 1) - 1
+    n_level = 1 << level
+    return current + n_level
+
+
+def _compute_right(current):
+    level = jnp.frexp(current + 1)[1] - 1
+    # level = 32 - lax.clz(current + 1) - 1
+    n_level = 1 << level
+    return current + 2 * n_level
+
+
+def _compute_parent(current):
+    level = jnp.frexp(current + 1)[1] - 1
+    # level = 32 - lax.clz(current + 1) - 1
+    n_above = (1 << level) - 1
+    n_parent_level = 1 << (level - 1)
+    parent = jnp.where(current < n_above + n_parent_level, current - n_parent_level, current - 2 * n_parent_level)
+    parent = jnp.where(current == 0, -1, parent)  # root has no parent
+    return parent
 
 def _update_nodes(nodes, index, level):
     # Calculate numbers for the level

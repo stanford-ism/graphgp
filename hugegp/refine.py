@@ -47,36 +47,6 @@ def generate(
     return values
 
 
-def generate_inv(
-    graph: Graph,
-    covariance: CovarianceType,
-    values: Array,
-    *,
-    cuda: bool = False,
-) -> Array:
-    """
-    Inverse of ``generate``. Ensure that the choice for ``reorder`` is the same. Recommended to JIT compile.
-    """
-    n0 = len(graph.points) - len(graph.neighbors)
-    if graph.indices is not None:
-        values = values[graph.indices]
-    initial_values, xi = refine_inv(graph.points, graph.neighbors, graph.offsets, covariance, values, cuda=cuda)
-    initial_xi = generate_dense_inv(graph.points[:n0], covariance, initial_values)
-    xi = jnp.concatenate([initial_xi, xi], axis=0)
-    if graph.indices is not None:
-        xi = jnp.empty_like(xi).at[graph.indices].set(xi)
-    return xi
-
-
-def generate_logdet(graph: Graph, covariance: CovarianceType, *, cuda: bool = False) -> Array:
-    """
-    Log determinant of ``generate``. Recommended to JIT compile.
-    """
-    n0 = len(graph.points) - len(graph.neighbors)
-    dense_logdet = generate_dense_logdet(graph.points[:n0], covariance)
-    return dense_logdet + refine_logdet(graph.points, graph.neighbors, graph.offsets, covariance, cuda=cuda)
-
-
 def generate_dense(points: Array, covariance: CovarianceType, xi: Array) -> Array:
     """
     Generate a GP with a dense Cholesky decomposition. Note that to compare with the GraphGP values,
@@ -93,24 +63,6 @@ def generate_dense(points: Array, covariance: CovarianceType, xi: Array) -> Arra
     L = jnp.linalg.cholesky(K)
     values = L @ xi
     return values
-
-
-def generate_dense_inv(points: Array, covariance: CovarianceType, values: Array) -> Array:
-    """
-    Inverse of ``generate_dense``.
-    """
-    K = compute_cov_matrix(covariance, points, points)
-    L = jnp.linalg.cholesky(K)
-    xi = jnp.linalg.solve(L, values)
-    return xi
-
-
-def generate_dense_logdet(points: Array, covariance: CovarianceType) -> Array:
-    """
-    Log determinant of ``generate_dense``.
-    """
-    K = compute_cov_matrix(covariance, points, points)
-    return jnp.linalg.slogdet(K)[1] / 2
 
 
 def refine(
@@ -164,6 +116,37 @@ def refine(
     return values
 
 
+def generate_inv(
+    graph: Graph,
+    covariance: CovarianceType,
+    values: Array,
+    *,
+    cuda: bool = False,
+) -> Array:
+    """
+    Inverse of ``generate``. Ensure that the choice for ``reorder`` is the same. Recommended to JIT compile.
+    """
+    n0 = len(graph.points) - len(graph.neighbors)
+    if graph.indices is not None:
+        values = values[graph.indices]
+    initial_values, xi = refine_inv(graph.points, graph.neighbors, graph.offsets, covariance, values, cuda=cuda)
+    initial_xi = generate_dense_inv(graph.points[:n0], covariance, initial_values)
+    xi = jnp.concatenate([initial_xi, xi], axis=0)
+    if graph.indices is not None:
+        xi = jnp.empty_like(xi).at[graph.indices].set(xi)
+    return xi
+
+
+def generate_dense_inv(points: Array, covariance: CovarianceType, values: Array) -> Array:
+    """
+    Inverse of ``generate_dense``.
+    """
+    K = compute_cov_matrix(covariance, points, points)
+    L = jnp.linalg.cholesky(K)
+    xi = jnp.linalg.solve(L, values)
+    return xi
+
+
 def refine_inv(
     points: Array,
     neighbors: Array,
@@ -191,6 +174,23 @@ def refine_inv(
         mean, std = jax.vmap(Partial(_conditional_mean_std, covariance))(coarse_points, coarse_values, fine_point)
         xi = jnp.concatenate([(fine_value - mean) / std, xi], axis=0)
     return initial_values, xi
+
+
+def generate_logdet(graph: Graph, covariance: CovarianceType, *, cuda: bool = False) -> Array:
+    """
+    Log determinant of ``generate``. Recommended to JIT compile.
+    """
+    n0 = len(graph.points) - len(graph.neighbors)
+    dense_logdet = generate_dense_logdet(graph.points[:n0], covariance)
+    return dense_logdet + refine_logdet(graph.points, graph.neighbors, graph.offsets, covariance, cuda=cuda)
+
+
+def generate_dense_logdet(points: Array, covariance: CovarianceType) -> Array:
+    """
+    Log determinant of ``generate_dense``.
+    """
+    K = compute_cov_matrix(covariance, points, points)
+    return jnp.linalg.slogdet(K)[1] / 2
 
 
 def refine_logdet(

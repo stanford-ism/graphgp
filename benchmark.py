@@ -101,25 +101,36 @@ def run_single_benchmark(test_params):
     graph_timings = {}
 
     if test_params["graph"]["strict"]:
+        # # Time all-cuda build graph
+        # start = time.perf_counter()
+        # graph = gp.build_graph(points, n0=test_params["n0"], k=test_params["k"], cuda=True)
+        # graph.points.block_until_ready()
+        # graph_timings["build_graph"] = time.perf_counter() - start
+
         # Time build_tree
         start = time.perf_counter()
-        points_reordered, split_dims, indices = build_tree(points)
+        points_reordered, split_dims, indices = build_tree(points, cuda=True)
+        indices.block_until_ready()
         graph_timings["build_tree"] = time.perf_counter() - start
 
         # Time query_preceding_neighbors
         start = time.perf_counter()
-        neighbors = query_preceding_neighbors(points_reordered, split_dims, k=test_params["k"], n0=test_params["n0"], cuda=True)
+        neighbors = query_preceding_neighbors(
+            points_reordered, split_dims, k=test_params["k"], n0=test_params["n0"], cuda=True
+        )
+        neighbors.block_until_ready()
         graph_timings["query_neighbors"] = time.perf_counter() - start
 
         # Time compute_depths
         start = time.perf_counter()
         depths = compute_depths(neighbors, n0=test_params["n0"], cuda=True)
+        depths.block_until_ready()
         graph_timings["compute_depths"] = time.perf_counter() - start
 
         # Time order_by_depth
         start = time.perf_counter()
         points_final, indices_final, neighbors_final, depths_final = order_by_depth(
-            points_reordered, indices, neighbors, depths
+            points_reordered, indices, neighbors, depths, cuda=True
         )
         offsets = jnp.searchsorted(depths_final, jnp.arange(1, jnp.max(depths_final) + 2))
         offsets = tuple(int(o) for o in offsets)
