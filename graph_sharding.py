@@ -42,8 +42,8 @@ def graph_shard(
     graph_inv_ids[graph_ids] = np.arange(graph_ids.size)
 
     ids = list(np.arange(sh, dtype=np.int_) for sh in shape)
-    graphs = []
     gathers = []
+    graphs = []
     for i in range(n_shards):
         # Create shard in original tensor
         ids[axis] = np.arange(i * shard_size, (i + 1) * shard_size, dtype=np.int_)
@@ -75,8 +75,14 @@ def graph_shard(
         missing.sort()
         if _debug:
             assert np.all(np.unique(missing) == missing)
-
-        all_ids = np.concatenate((graph_inv_ids[fids], missing))
+        gathers.append(missing)
+        graphs.append(graph_inv_ids[fids])
+    # Pad missing ids to the same size
+    print("Gather ids sizes", [len(gather) for gather in gathers])
+    max_gathers = max(len(gather) for gather in gathers)
+    gathers = [np.append(gather, np.repeat(gather[-1], max_gathers - len(gather))) for gather in gathers]
+    for i, (gather, g) in enumerate(zip(gathers, graphs)):
+        all_ids = np.concatenate((g, gather))
         sorting = np.argsort(all_ids)  # New tree order
         all_ids = all_ids[sorting]
 
@@ -87,7 +93,6 @@ def graph_shard(
                 == 0
             )
             assert np.all(all_ids[:n0] == np.arange(n0))
-            assert np.all(np.unique(all_ids) == all_ids)
         new_points = graph.points[all_ids]
         new_neighbors = graph.neighbors[all_ids[n0:] - n0]
 
@@ -101,13 +106,13 @@ def graph_shard(
         offsets = np.searchsorted(depths, np.arange(1, np.max(depths) + 2))
         offsets = tuple(int(o) for o in offsets)
         # Get missing ids to index into input tensor″
-        missing = graph_ids[missing]
-        missing = np.unravel_index(missing, shape)
-        gathers.append(missing)
+        gather = graph_ids[gather]
+        gather = np.unravel_index(gather, shape)
+        gathers[i] = gather
         new_graph = gp.Graph(new_points, new_neighbors, offsets, indices=sorting)
         if _debug:
             gp.check_graph(new_graph)
-        graphs.append(new_graph)
+        graphs[i] = new_graph
     return graphs, gathers
 
 
@@ -130,9 +135,7 @@ def generate_sharded(
         # TODO replace with jax sharding and all_to_all for gather
         print("Getting shard", i)
         xis_shard = xis[i * shard_size : (i + 1) * shard_size]
-        print("with shard size", xis_shard.size)
         xis_in = jnp.concatenate((xis_shard.flatten(), xis[gather]))
-        print("with gather size", xis_in.size)
         values_shard = gp.generate(graph, cov, xis_in, cuda=cuda)
         values_shard = values_shard[: xis_shard.size].reshape(xis_shard.shape)
         results.append(values_shard)
@@ -167,7 +170,7 @@ if __name__ == "__main__":
     nshard = 4
     graphs, gathers = graph_shard(
         graph, nshard, shape=xis.shape, axis=shard_axis, cuda=False,
-        _debug=True,
+        _debug=False,
     )
     results = generate_sharded(
         graphs, gathers, cov, xis, shard_axis=shard_axis, cuda=False
