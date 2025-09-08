@@ -9,6 +9,7 @@ def graph_shard(
     shape: tuple[int, ...] | None = None,
     axis: int = 0,
     cuda: bool = False,
+    _debug: bool = False,
 ) -> tuple[list[gp.Graph], list[tuple[np.ndarray, ...]]]:
     """Sharding for GraphGP.
 
@@ -17,7 +18,7 @@ def graph_shard(
     neighbors (and neighbors of neighbors, etc.) that are not included in the
     tensor shard but need to be included in the graph for gp generation.
 
-    TODO: Not performant for large graphs.
+    TODO: Check performance for large graphs. Requires operations on full graph.
     """
     if cuda:
         raise NotImplementedError("CUDA not implemented")
@@ -54,60 +55,60 @@ def graph_shard(
         # Get ids in tree order
         graph_fids = graph_inv_ids[fids]
         graph_fids.sort()
-        assert np.all(np.unique(graph_fids) == graph_fids)  # TODO make debug optional
+        if _debug:
+            assert np.all(np.unique(graph_fids) == graph_fids)
         # Always include all initial points
         missing = np.setdiff1d(np.arange(n0), graph_fids, assume_unique=True)
-        all_ids = np.concatenate((np.arange(n0), graph_fids[graph_fids >= n0]))
-        active_ids = np.copy(all_ids)[n0:]
+        all_ids = graph_fids[graph_fids >= n0]
+        nbrs = all_ids
         search = True
         while search:
             # Add all missing neighbors to `missing` until graph shard is valid
-            nbrs = graph.neighbors[active_ids - n0].flatten()
+            nbrs = graph.neighbors[nbrs - n0].flatten()
             nbrs = nbrs[nbrs >= n0]
             nbrs = np.unique(nbrs)
-            # TODO check against searchsorted method
             nbrs = np.setdiff1d(nbrs, all_ids, assume_unique=True)
+            # TODO @dodgebc: can we do the preceding operations on the tree
+            # without uniqifying and getting all neighbors?
             missing = np.concatenate((missing, nbrs))
-            missing.sort()
             all_ids = np.concatenate((all_ids, nbrs))
             all_ids.sort()
-            active_ids = nbrs
-            search = active_ids.size > 0
-        assert np.all(
-            np.setdiff1d(all_ids, missing, assume_unique=True) == graph_fids
-        )  # TODO make debug optional
-        assert np.all(np.unique(missing) == missing)
+            search = nbrs.size > 0
+        missing.sort()
+        if _debug:
+            assert np.all(np.unique(missing) == missing)
 
-        # TODO unify with above
         all_ids = np.concatenate((graph_inv_ids[fids], missing))
-        sorting = np.argsort(all_ids)
+        sorting = np.argsort(all_ids)  # New tree order
         all_ids = all_ids[sorting]
 
         new_neighbors = graph.neighbors[all_ids[n0:] - n0]
-        # TODO make debug optional
-        assert (
-            np.setdiff1d(np.unique(new_neighbors), all_ids, assume_unique=True).size
-            == 0
-        )
-        assert np.all(all_ids[:n0] == np.arange(n0))
-        assert np.all(np.unique(all_ids) == all_ids)
+        if _debug:
+            assert (
+                np.setdiff1d(np.unique(new_neighbors), all_ids, assume_unique=True).size
+                == 0
+            )
+            assert np.all(all_ids[:n0] == np.arange(n0))
+            assert np.all(np.unique(all_ids) == all_ids)
         new_points = graph.points[all_ids]
         new_neighbors = graph.neighbors[all_ids[n0:] - n0]
 
+        # Index into new tree
         all_inv_ids = np.full(all_ids.max() + 1, -1)
         all_inv_ids[all_ids] = np.arange(all_ids.size)
         new_neighbors = all_inv_ids[new_neighbors]
         assert np.all(new_neighbors != -1)
-
+        # New depths
         depths = gp.compute_depths(new_neighbors, n0=n0, cuda=cuda)
         offsets = np.searchsorted(depths, np.arange(1, np.max(depths) + 2))
         offsets = tuple(int(o) for o in offsets)
-
+        # Get missing ids to index into input tensor″
         missing = graph_ids[missing]
         missing = np.unravel_index(missing, shape)
         gathers.append(missing)
         new_graph = gp.Graph(new_points, new_neighbors, offsets, indices=sorting)
-        gp.check_graph(new_graph)
+        if _debug:
+            gp.check_graph(new_graph)
         graphs.append(new_graph)
     return graphs, gathers
 
@@ -119,7 +120,10 @@ def generate_sharded(
     xis,
     shard_axis=0,
     cuda=False,
+    _debug=True,
 ):
+    if not _debug:
+        raise NotImplementedError("Only demo mode with debug enabled implemented!")
     assert len(graphs) == len(gathers)
     nshard = len(graphs)
     results = []
@@ -131,7 +135,7 @@ def generate_sharded(
         print("with shard size", xis_shard.size)
         xis_in = jnp.concatenate((xis_shard.flatten(), xis[gather]))
         print("with gather size", xis_in.size)
-        values_shard = gp.generate(graph, cov, xis_in, cuda=False)
+        values_shard = gp.generate(graph, cov, xis_in, cuda=cuda)
         values_shard = values_shard[: xis_shard.size].reshape(xis_shard.shape)
         results.append(values_shard)
     results = jnp.concatenate(results, axis=shard_axis)
@@ -161,7 +165,8 @@ if __name__ == "__main__":
     shard_axis = 0
     nshard = 4
     graphs, gathers = graph_shard(
-        graph, nshard, shape=xis.shape, axis=shard_axis, cuda=False
+        graph, nshard, shape=xis.shape, axis=shard_axis, cuda=False,
+        _debug=True,
     )
     results = generate_sharded(
         graphs, gathers, cov, xis, shard_axis=shard_axis, cuda=False
