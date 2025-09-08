@@ -26,8 +26,6 @@ def graph_shard(
 
     n0 = graph.offsets[0]
 
-    depths = gp.compute_depths(graph.neighbors, n0=n0, cuda=cuda)
-
     if shape is None:
         shape = graph.points.shape[:1]
     if axis >= len(shape):
@@ -159,6 +157,9 @@ if __name__ == "__main__":
     graph = gp.build_graph(points.reshape(-1, 2), n0=128, k=3, cuda=False)
     xis = jax.random.normal(k3, (npix1, npix2))
     cov = gp.MaternCovariance(p=1)
+    cov_bins = gp.make_cov_bins(r_min=1e-5, r_max=1, n_bins=512)
+    cov_vals = cov(cov_bins, cutoff=0.1)
+    cov = (cov_bins, cov_vals)
     values = gp.generate(graph, cov, xis.flatten(), cuda=False)
     values = values.reshape(xis.shape)
 
@@ -171,4 +172,5 @@ if __name__ == "__main__":
     results = generate_sharded(
         graphs, gathers, cov, xis, shard_axis=shard_axis, cuda=False
     )
+    print(results[:10,0], values[:10,0])
     assert jnp.allclose(results, values)
