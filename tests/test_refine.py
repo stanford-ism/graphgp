@@ -2,7 +2,7 @@ import jax
 import jax.numpy as jnp
 import jax.random as jr
 
-import hugegp as gp
+import graphgp as gp
 
 
 def test_inverse():

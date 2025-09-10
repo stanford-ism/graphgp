@@ -1,5 +1,5 @@
 [project]
-name = "hugegp"
+name = "graphgp"
 dynamic = ["version"]
 description = "Add your description here"
 readme = "README.md"
@@ -20,7 +20,7 @@ dev = [
 ]
 
 [project.urls]
-Source = "https://github.com/dodgebc/hugegp"
+Source = "https://github.com/dodgebc/graphgp"
 
 [build-system]
 requires = ["hatchling", "hatch-vcs"]

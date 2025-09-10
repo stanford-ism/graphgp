@@ -3,7 +3,7 @@ import jax.numpy as jnp
 import jax.random as jr
 from jax.tree_util import Partial
 
-import hugegp as gp
+import graphgp as gp
 
 rng = jr.key(99)
 

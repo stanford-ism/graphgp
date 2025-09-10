@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Benchmark script for hugegp algorithm performance testing.
+Benchmark script for graphgp algorithm performance testing.
 
 Sample configuration file format:
 {
@@ -44,9 +44,9 @@ import jax.numpy as jnp
 import jax.random as jr
 import numpy as np
 
-import hugegp as gp
-from hugegp.tree import build_tree, query_preceding_neighbors, query_offset_neighbors
-from hugegp.graph import compute_depths_parallel, compute_depths_serial, order_by_depth
+import graphgp as gp
+from graphgp.tree import build_tree, query_preceding_neighbors, query_offset_neighbors
+from graphgp.graph import compute_depths_parallel, compute_depths_serial, order_by_depth
 
 
 def generate_points(rng, n_points, n_dim, distribution_params):
@@ -212,7 +212,7 @@ def run_single_benchmark(test_params):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Benchmark hugegp algorithm performance")
+    parser = argparse.ArgumentParser(description="Benchmark graphgp algorithm performance")
     parser.add_argument("--config", type=str, required=True, help="Path to JSON configuration file")
     parser.add_argument("--output", type=str, help="Output file for results (if not provided, only prints results)")
 

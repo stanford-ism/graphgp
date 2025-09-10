@@ -1,6 +1,6 @@
 import numpy as np
 import jax
-import hugegp as gp
+import graphgp as gp
 
 
 def graph_shard(
@@ -22,7 +22,7 @@ def graph_shard(
     """
     if cuda:
         raise NotImplementedError("CUDA not implemented")
-        # FIXME @dodgebc: inconsistent behavior in hugegp.tree.query_neighbors vs hugegp-cuda.tree.query_neighbors
+        # FIXME @dodgebc: inconsistent behavior in graphgp.tree.query_neighbors vs graphgp-cuda.tree.query_neighbors
 
     n0 = graph.offsets[0]
 
