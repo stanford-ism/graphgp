@@ -11,6 +11,7 @@ from .tree import build_tree, query_preceding_neighbors, query_offset_neighbors
 
 try:
     import hugegp_cuda
+
     has_cuda = True
 except ImportError:
     has_cuda = False
@@ -48,7 +49,7 @@ def check_graph(graph: Graph):
         1. Points are in topological order (i.e. neighbors come before in the order).
         2. Length of ``neighbors`` is less than length of ``points`` by ``offsets[0]``.
         3. Neighbors are not in the same batch as defined by ``offsets``.
-        4. Last offset does not exceed the number of points.
+        4. Offsets are increasing and do not exceed the number of points.
     """
     points, neighbors, offsets = graph.points, graph.neighbors, graph.offsets
     offsets = jnp.asarray(offsets)
@@ -71,9 +72,8 @@ def check_graph(graph: Graph):
 
 def build_graph(points: Array, *, n0: int, k: int, cuda: bool = False) -> Graph:
     """
-    Build a graph such that all preceding neighbors are strictly included. This is the most accurate
-    but is slower to build due to a single required serial pass through the points. The depth of the
-    graph depends on the number of points and may impact parallel performance if too deep.
+    Build a graph such that all preceding neighbors are strictly included. This is most accurate
+    but is slower to build. The depth of the graph depends on the number of points.
 
     Args:
         points: The input points of shape ``(N, d)``.
@@ -90,12 +90,12 @@ def build_graph(points: Array, *, n0: int, k: int, cuda: bool = False) -> Graph:
         points, indices, neighbors, depths = hugegp_cuda.build_graph(points, n0=n0, k=k)
     else:
         points, split_dims, indices = build_tree(points)
-        neighbors = query_preceding_neighbors(points, split_dims, n0=n0, k=k, cuda=cuda)
-        depths = compute_depths(neighbors, n0=n0, cuda=cuda)
+        neighbors = query_preceding_neighbors(points, split_dims, n0=n0, k=k)
+        depths = compute_depths_parallel(neighbors, n0=n0)
         points, indices, neighbors, depths = order_by_depth(points, indices, neighbors, depths)
     offsets = jnp.searchsorted(depths, jnp.arange(1, jnp.max(depths) + 2))
     offsets = tuple(int(o) for o in offsets)
-    return Graph(points, neighbors[:,::-1], offsets, indices)
+    return Graph(points, neighbors[:, ::-1], offsets, indices)
 
 
 def build_lazy_graph(points: Array, *, n0: int, k: int, factor: float = 1.5, max_batch: int | None = None) -> Graph:
@@ -124,15 +124,37 @@ def build_lazy_graph(points: Array, *, n0: int, k: int, factor: float = 1.5, max
 
     points, split_dims, indices = build_tree(points)
     neighbors, _ = query_offset_neighbors(points, split_dims, offsets=offsets, k=k)
-    return Graph(points, neighbors[:,::-1], offsets, indices)
+    return Graph(points, neighbors[:, ::-1], offsets, indices)
 
 
 @Partial(jax.jit, static_argnames=("n0", "cuda"))
-def compute_depths(neighbors, *, n0, cuda=False):
+def compute_depths_parallel(neighbors, *, n0, cuda=False):
     if cuda:
         if not has_cuda:
             raise ImportError("CUDA extension not installed, cannot use cuda=True.")
-        depths = hugegp_cuda.compute_depths(neighbors, n0=n0, n_steps=100)
+        depths = hugegp_cuda.compute_depths_parallel(neighbors, n0=n0)
+    else:
+        depths = jnp.zeros(n0 + len(neighbors), dtype=jnp.int32)
+
+        def update(carry):
+            old_depths, depths = carry
+            new_depths = depths.at[jnp.arange(n0, len(depths))].set(1 + jnp.max(depths[neighbors], axis=1))
+            return depths, new_depths
+
+        def cond(carry):
+            old_depths, depths = carry
+            return jnp.any(old_depths != depths)
+
+        depths = jax.lax.while_loop(cond, update, (depths - 1, depths))[1]
+    return depths
+
+
+@Partial(jax.jit, static_argnames=("n0", "cuda"))
+def compute_depths_serial(neighbors, *, n0, cuda=False):
+    if cuda:
+        if not has_cuda:
+            raise ImportError("CUDA extension not installed, cannot use cuda=True.")
+        depths = hugegp_cuda.compute_depths_serial(neighbors, n0=n0)
     else:
         depths = jnp.zeros(n0 + len(neighbors), dtype=jnp.int32)
 
@@ -142,6 +164,7 @@ def compute_depths(neighbors, *, n0, cuda=False):
 
         depths = jax.lax.fori_loop(n0, n0 + len(neighbors), update, depths)
     return depths
+
 
 @Partial(jax.jit, static_argnames=("cuda",))
 def order_by_depth(points, indices, neighbors, depths, *, cuda=False):
@@ -168,7 +191,7 @@ def order_by_depth(points, indices, neighbors, depths, *, cuda=False):
 #     indices = indices[depth_order]
 #     depths = depths[depth_order]
 #     neighbors = jnp.argsort(depth_order)[neighbors[depth_order[n0:] - n0]]  # first n0 stay in order
-    # return points, indices, neighbors, depths
+# return points, indices, neighbors, depths
 
 # def build_old_strict_graph(points, *, n_initial, k):
 #     n_points = len(points)

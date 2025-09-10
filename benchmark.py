@@ -8,7 +8,6 @@ Sample configuration file format:
     "covariance": {"matern_p": 0, "discrete_cov": true, "r_min": 1e-5, "r_max": 10.0, "n_bins": 1000},
     "distribution": {"type": "gaussian"},
     "graph": {"strict": true},
-    "warmup_runs": 1,
     "timing_runs": 5,
     "cuda": false,
     "seed": 137
@@ -32,6 +31,7 @@ Graph types:
 - "strict": true (default) - Use build_graph for highest accuracy but slower to build
 - "strict": false - Use build_lazy_graph for faster building but less accuracy
             Requires "factor" parameter (multiplicative factor for batch growth)
+- "serial_depth": true/false - Use compute_depths_serial if true, compute_depths if false (default)
 """
 
 import json
@@ -46,7 +46,7 @@ import numpy as np
 
 import hugegp as gp
 from hugegp.tree import build_tree, query_preceding_neighbors, query_offset_neighbors
-from hugegp.graph import compute_depths, order_by_depth
+from hugegp.graph import compute_depths_parallel, compute_depths_serial, order_by_depth
 
 
 def generate_points(rng, n_points, n_dim, distribution_params):
@@ -77,7 +77,6 @@ def run_single_benchmark(test_params):
     """Run benchmark for a single parameter combination."""
     # Build covariance
     cov_func = gp.MaternCovariance(p=test_params["covariance"]["matern_p"])
-
     if test_params["covariance"]["discrete_cov"]:
         cov_bins = gp.make_cov_bins(
             r_min=test_params["covariance"]["r_min"],
@@ -108,33 +107,44 @@ def run_single_benchmark(test_params):
         # graph_timings["build_graph"] = time.perf_counter() - start
 
         # Time build_tree
-        start = time.perf_counter()
-        points_reordered, split_dims, indices = build_tree(points, cuda=True)
-        indices.block_until_ready()
-        graph_timings["build_tree"] = time.perf_counter() - start
+        for i in range(2):
+            start = time.perf_counter()
+            points_reordered, split_dims, indices = build_tree(points, cuda=test_params["cuda"])
+            indices.block_until_ready()
+            graph_timings["build_tree"] = time.perf_counter() - start
 
         # Time query_preceding_neighbors
-        start = time.perf_counter()
-        neighbors = query_preceding_neighbors(
-            points_reordered, split_dims, k=test_params["k"], n0=test_params["n0"], cuda=True
-        )
-        neighbors.block_until_ready()
-        graph_timings["query_neighbors"] = time.perf_counter() - start
+        for i in range(2):
+            start = time.perf_counter()
+            neighbors = query_preceding_neighbors(
+                points_reordered, split_dims, k=test_params["k"], n0=test_params["n0"], cuda=test_params["cuda"]
+            )
+            neighbors.block_until_ready()
+            graph_timings["query_neighbors"] = time.perf_counter() - start
 
         # Time compute_depths
-        start = time.perf_counter()
-        depths = compute_depths(neighbors, n0=test_params["n0"], cuda=True)
-        depths.block_until_ready()
-        graph_timings["compute_depths"] = time.perf_counter() - start
-
+        for i in range(2):
+            if test_params["graph"]["serial_depth"]:
+                start = time.perf_counter()
+                depths = compute_depths_serial(neighbors, n0=test_params["n0"], cuda=test_params["cuda"])
+                depths.block_until_ready()
+                graph_timings["compute_depths_serial"] = time.perf_counter() - start
+            else:
+                start = time.perf_counter()
+                depths = compute_depths_parallel(neighbors, n0=test_params["n0"], cuda=test_params["cuda"])
+                depths.block_until_ready()
+                graph_timings["compute_depths_parallel"] = time.perf_counter() - start
+        
         # Time order_by_depth
-        start = time.perf_counter()
-        points_final, indices_final, neighbors_final, depths_final = order_by_depth(
-            points_reordered, indices, neighbors, depths, cuda=True
-        )
-        offsets = jnp.searchsorted(depths_final, jnp.arange(1, jnp.max(depths_final) + 2))
-        offsets = tuple(int(o) for o in offsets)
-        graph_timings["order_by_depth"] = time.perf_counter() - start
+        for i in range(2):
+            start = time.perf_counter()
+            points_final, indices_final, neighbors_final, depths_final = order_by_depth(
+                points_reordered, indices, neighbors, depths, cuda=test_params["cuda"]
+            )
+            offsets = jnp.searchsorted(depths_final, jnp.arange(1, jnp.max(depths_final) + 2))
+            offsets = tuple(int(o) for o in offsets)
+            depths_final.block_until_ready()
+            graph_timings["order_by_depth"] = time.perf_counter() - start
 
         graph = gp.Graph(points_final, neighbors_final[:, ::-1], offsets, indices_final)
     else:
@@ -160,19 +170,16 @@ def run_single_benchmark(test_params):
     level_sizes = np.diff(graph.offsets).tolist()
     graph_depth = len(graph.offsets)
 
-    # JIT and compute memory
+    # Warmup with timing (JIT compilation) - always just one run
+    start = time.perf_counter()
     func = jax.jit(gp.generate, static_argnames=("cuda",))
+    output = func(graph, covariance, xi, cuda=test_params["cuda"])
+    output.block_until_ready()
+    warmup_time = time.perf_counter() - start
+
+    # Memory stats
     stats = func.lower(graph, covariance, xi, cuda=test_params["cuda"]).compile().memory_analysis()
     total_mem = stats.temp_size_in_bytes + stats.argument_size_in_bytes + stats.output_size_in_bytes
-
-    # Warmup with timing (JIT compilation)
-    warmup_times = []
-    for _ in range(test_params["warmup_runs"]):
-        start = time.perf_counter()
-        output = func(graph, covariance, xi, cuda=test_params["cuda"])
-        output.block_until_ready()
-        warmup_times.append(time.perf_counter() - start)
-    warmup_time = np.mean(warmup_times) if warmup_times else 0.0
 
     # Time multiple runs
     times = []
@@ -185,9 +192,15 @@ def run_single_benchmark(test_params):
     mean_time = np.mean(times)
     std_time = np.std(times)
 
+    # warmup_time = 0
+    # total_mem = 0
+    # mean_time = 0
+    # std_time = 0
+    # times = [0, 0]
+
     result = {
         "parameters": test_params.copy(),
-        "level_sizes": level_sizes,
+        # "level_sizes": level_sizes,
         "graph_depth": graph_depth,
         "graph_timings": {k: float(v) for k, v in graph_timings.items()},
         "warmup_time": float(warmup_time),
@@ -231,8 +244,8 @@ def main():
         results.append(result)
 
         # Print graph depth and all graph timings on first line
-        graph_timing_str = ", ".join([f"{k}: {1000 * v:.2f} ms" for k, v in result["graph_timings"].items()])
-        print(f"Graph depth: {result['graph_depth']}, {graph_timing_str}")
+        print(", ".join([f"{k}: {1000 * v:.2f} ms" for k, v in result["graph_timings"].items()]))
+        print(f"Graph depth: {result['graph_depth']}")
 
         # Print compiled memory usage on third line
         compiled_mem_mb = result["compiled_memory_mb"]
