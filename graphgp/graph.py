@@ -7,6 +7,8 @@ from jax.tree_util import Partial, register_dataclass
 from jax import Array
 from jax import lax
 
+import numpy as np
+
 from .tree import build_tree, query_preceding_neighbors, query_offset_neighbors
 
 try:
@@ -37,7 +39,7 @@ class Graph:
 
     points: Array
     neighbors: Array
-    offsets: Tuple[int, ...] = field(metadata=dict(static=True))
+    offsets: np.ndarray = field(metadata=dict(static=True))
     indices: Array | None = None
 
 
@@ -56,7 +58,7 @@ def check_graph(graph: Graph):
 
     # Ensure offsets are valid
     assert offsets[0] == len(points) - len(neighbors), "Neighbors should start from first offset"
-    assert jnp.all(offsets[1:] > offsets[:-1]), "Offsets must be strictly increasing"
+    assert jnp.all(offsets[1:] >= offsets[:-1]), "Offsets must be non-decreasing"
     assert offsets[-1] <= len(points), "Last offset must be less than or equal to the number of points"
 
     # Ensure topological order
@@ -94,8 +96,9 @@ def build_graph(points: Array, *, n0: int, k: int, cuda: bool = False) -> Graph:
         depths = compute_depths_parallel(neighbors, n0=n0)
         points, indices, neighbors, depths = order_by_depth(points, indices, neighbors, depths)
     offsets = jnp.searchsorted(depths, jnp.arange(1, jnp.max(depths) + 2))
-    offsets = tuple(int(o) for o in offsets)
-    return Graph(points, neighbors[:, ::-1], offsets, indices)
+    offsets = tuple(int(x) for x in offsets)
+    # TODO: neighbors[:, ::-1] from far to close feels more stable but not sure if it matters
+    return Graph(points, neighbors, np.array(offsets), indices)
 
 
 def build_lazy_graph(points: Array, *, n0: int, k: int, factor: float = 1.5, max_batch: int | None = None) -> Graph:
@@ -120,7 +123,7 @@ def build_lazy_graph(points: Array, *, n0: int, k: int, factor: float = 1.5, max
         if max_batch is not None:
             next = min(next, offsets[-1] + max_batch)
         offsets.append(int(min(next, len(points))))
-    offsets = tuple(offsets)
+    offsets = np.array(offsets)
 
     points, split_dims, indices = build_tree(points)
     neighbors, _ = query_offset_neighbors(points, split_dims, offsets=offsets, k=k)
@@ -181,81 +184,3 @@ def order_by_depth(points, indices, neighbors, depths, *, cuda=False):
         inv_order = inv_order.at[order].set(inv_order)
         neighbors = inv_order[neighbors]
     return points, indices, neighbors, depths
-
-
-# @jax.jit
-# def order_by_depth_slow(points, indices, neighbors, depths):
-#     n0 = len(points) - len(neighbors)
-#     depth_order = jnp.argsort(depths)
-#     points = points[depth_order]
-#     indices = indices[depth_order]
-#     depths = depths[depth_order]
-#     neighbors = jnp.argsort(depth_order)[neighbors[depth_order[n0:] - n0]]  # first n0 stay in order
-# return points, indices, neighbors, depths
-
-# def build_old_strict_graph(points, *, n_initial, k):
-#     n_points = len(points)
-
-#     # Build k-d tree
-#     tree = jk.build_tree(points, cuda=True)
-#     points = points[tree.indices]
-
-#     # Query preceding neighbors in alternating order
-#     neighbors = graphgp_cuda.query_preceding_neighbors_alt(points, tree.split_dims, k=k)
-
-#     # Compute alternating order and reorder everything
-#     alt_order = jnp.argsort(jax.vmap(compute_alt_index)(jnp.arange(n_points)))
-#     points = points[alt_order]
-#     neighbors = jnp.asarray(jnp.argsort(alt_order)[neighbors[alt_order]], dtype=jnp.uint32)
-
-#     # Compute depth of each point in the graph for levels
-#     levels = graphgp_cuda.compute_levels(neighbors, n_initial=n_initial)
-
-#     # Sort by increasing level and compute level offsets
-#     level_order = jnp.argsort(levels)
-#     levels = levels[level_order]
-#     points = points[level_order]
-#     neighbors = jnp.asarray(jnp.argsort(level_order)[neighbors[level_order]], dtype=jnp.uint32)
-#     neighbors = jnp.sort(neighbors, axis=1)
-#     offsets = jnp.searchsorted(levels, jnp.arange(1, jnp.max(levels) + 1))
-#     offsets = tuple(int(o) for o in offsets)
-
-#     # Compute indices
-#     indices = tree.indices[alt_order][level_order]
-#     return (points, neighbors, offsets, indices)
-
-# def build_old_graph(points, *, offsets, k, cuda=False):
-#     n_points = len(points)
-
-#     # Order points into alternating tree order
-#     tree = jk.build_tree(points)
-#     alt_order = jnp.argsort(jax.vmap(compute_alt_index)(jnp.arange(n_points)))
-#     indices = tree.indices[alt_order]
-#     points = points[indices]
-
-#     # Construct neighbors array
-#     neighbors = []
-#     for i in range(len(offsets) - 1):
-#         ni, _ = jk.build_and_query(points[: offsets[i]], points[offsets[i] : offsets[i + 1]], k=k, cuda=cuda)
-#         neighbors.append(ni)
-#     neighbors = jnp.concatenate(neighbors, axis=0)
-
-#     return (points, neighbors, indices)
-
-
-# def compute_alt_index(idx):
-#     level = jnp.frexp(idx + 1)[1] - 1
-#     level_idx = idx - ((1 << level) - 1)
-#     return bit_reverse(level_idx, level) + ((1 << level) - 1)
-
-
-# def bit_reverse(n, b):
-#     n = jnp.asarray(n, dtype=jnp.uint32)
-#     b = jnp.asarray(b, dtype=jnp.uint32)
-#     n = ((n >> 1) & 0x55555555) | ((n & 0x55555555) << 1)
-#     n = ((n >> 2) & 0x33333333) | ((n & 0x33333333) << 2)
-#     n = ((n >> 4) & 0x0F0F0F0F) | ((n & 0x0F0F0F0F) << 4)
-#     n = ((n >> 8) & 0x00FF00FF) | ((n & 0x00FF00FF) << 8)
-#     n = (n >> 16) | (n << 16)
-#     n = n >> (32 - b)
-#     return n

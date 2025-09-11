@@ -7,7 +7,8 @@ from jax.tree_util import Partial, register_dataclass
 from jax import Array
 from jax.scipy.special import gammaln
 
-CovarianceType = Union[Callable[Array, [Array]], Tuple[Array, Callable[Array, [Array]]], Tuple[Array, Array]]
+CovarianceType = Union[Callable[[Array], Array], Tuple[Array, Callable[[Array], Array]], Tuple[Array, Array]]
+
 
 @register_dataclass
 @dataclass
@@ -44,6 +45,13 @@ def compute_matern_covariance(
     return result
 
 
+def prepare_matern_covariance_discrete(
+    *, p: int = 0, sigma: float = 1.0, cutoff: float = 1.0, eps: float = 1e-5, r_min: float, r_max: float, n_bins: int
+) -> Tuple[Array, Callable[[Array], Array]]:
+    cov_bins = make_cov_bins(r_min=r_min, r_max=r_max, n_bins=n_bins)
+    return (cov_bins, Partial(MaternCovariance(p=p, eps=eps), sigma=sigma, cutoff=cutoff))
+
+
 def _log_factorial(x):
     return gammaln(x + 1)
 
@@ -66,10 +74,12 @@ def compute_cov_matrix(
     else:
         raise ValueError("Invalid covariance specification.")
 
+
 def make_cov_bins(*, r_min: float, r_max: float, n_bins: int) -> Array:
     cov_bins = jnp.logspace(jnp.log10(r_min), jnp.log10(r_max), n_bins - 1)
     cov_bins = jnp.concatenate((jnp.array([0.0]), cov_bins), axis=0)
     return cov_bins
+
 
 def cov_lookup(r, cov_bins, cov_vals):
     """

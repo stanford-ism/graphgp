@@ -1,6 +1,0 @@
-Running 36 benchmark combinations...
---------------------------------------------------
-Benchmark 1/36
-n=100000, n0=5000, d=3, k=4, cuda=True
-2025-09-03 17:36:49.296202: W external/xla/xla/service/gpu/autotuning/gemm_fusion_autotuner.cc:1117] Compiling 33 configs for gemm_fusion_dot on a single thread.
-slurmstepd: error: *** JOB 88953 ON n16 CANCELLED AT 2025-09-03T17:36:50 ***

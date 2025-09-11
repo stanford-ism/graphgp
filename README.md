@@ -18,7 +18,7 @@ kp, kx = jax.random.split(jax.random.key(99))
 points = jax.random.normal(kp, shape=(100_000, 2))
 xi = jax.random.normal(kx, shape=(100_000,))
 
-graph = gp.build_graph(points, n_initial=1000, k=10)
+graph = gp.build_graph(points, n0=1000, k=10)
 covariance = gp.MaternCovariance(p=0)
 values = jax.jit(gp.generate)(graph, covariance, xi)
 ```

@@ -5,6 +5,8 @@ import jax.numpy as jnp
 from jax.tree_util import Partial
 from jax import Array
 
+import numpy as np
+
 from .covariance import compute_cov_matrix, CovarianceType
 from .graph import Graph
 
@@ -67,7 +69,7 @@ def generate_dense(points: Array, covariance: CovarianceType, xi: Array) -> Arra
 def refine(
     points: Array,
     neighbors: Array,
-    offsets: Tuple[int, ...],
+    offsets: np.ndarray,
     covariance: CovarianceType,
     initial_values: Array,
     xi: Array,
@@ -84,7 +86,7 @@ def refine(
     Args:
         points: Modeled points in tree order of shape ``(N, d)``.
         neighbors: Indices of the neighbors of shape ``(N - offsets[0], k)``.
-        offsets: Tuple of length ``B`` representing the end index of each batch.
+        offsets: Array of length ``B`` representing the end index of each batch.
         covariance: cov_func, (cov_bins, cov_func), or (cov_bins, cov_vals) The first is not compatible with cuda=True. If using your own covariance, inflate k(0) by a small factor to ensure SPD.
         initial_values: Initial values of shape ``(offsets[0],).``
         xi: Unit normal distributed parameters of shape ``(N - offsets[0],).``
@@ -149,7 +151,7 @@ def generate_dense_inv(points: Array, covariance: CovarianceType, values: Array)
 def refine_inv(
     points: Array,
     neighbors: Array,
-    offsets: Tuple[int, ...],
+    offsets: Array,
     covariance: CovarianceType,
     values: Array,
     *,
@@ -195,7 +197,7 @@ def generate_dense_logdet(points: Array, covariance: CovarianceType) -> Array:
 def refine_logdet(
     points: Array,
     neighbors: Array,
-    offsets: Tuple[int, ...],
+    offsets: Array,
     covariance: CovarianceType,
     *,
     cuda: bool = False,
@@ -205,7 +207,7 @@ def refine_logdet(
     """
     if cuda:
         raise NotImplementedError("CUDA support is not implemented.")
-    logdet = 0.0
+    logdet = jnp.array(0.0)
     n0 = len(points) - len(neighbors)
     for i in range(1, len(offsets)):
         start = offsets[i - 1]
