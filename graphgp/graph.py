@@ -39,7 +39,7 @@ class Graph:
 
     points: Array
     neighbors: Array
-    offsets: np.ndarray = field(metadata=dict(static=True))
+    offsets: Tuple[int, ...] = field(metadata=dict(static=True))
     indices: Array | None = None
 
 
@@ -98,7 +98,7 @@ def build_graph(points: Array, *, n0: int, k: int, cuda: bool = False) -> Graph:
     offsets = jnp.searchsorted(depths, jnp.arange(1, jnp.max(depths) + 2))
     offsets = tuple(int(x) for x in offsets)
     # TODO: neighbors[:, ::-1] from far to close feels more stable but not sure if it matters
-    return Graph(points, neighbors, np.array(offsets), indices)
+    return Graph(points, neighbors, offsets, indices)
 
 
 def build_lazy_graph(points: Array, *, n0: int, k: int, factor: float = 1.5, max_batch: int | None = None) -> Graph:
@@ -123,7 +123,7 @@ def build_lazy_graph(points: Array, *, n0: int, k: int, factor: float = 1.5, max
         if max_batch is not None:
             next = min(next, offsets[-1] + max_batch)
         offsets.append(int(min(next, len(points))))
-    offsets = np.array(offsets)
+    offsets = tuple(offsets)
 
     points, split_dims, indices = build_tree(points)
     neighbors, _ = query_offset_neighbors(points, split_dims, offsets=offsets, k=k)
