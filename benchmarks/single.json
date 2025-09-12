@@ -9,7 +9,8 @@
     },
     "graph": {
         "strict": true,
-        "serial_depth": false
+        "serial_depth": false,
+        "fuse": true
     },
     "distribution": {
       "type": "gaussian"
@@ -21,9 +22,9 @@
   },
   "runs": [
     {
-      "n": 100000000,
+      "n": 1000000000,
       "n0": 1000,
-      "k": 8
+      "k": 4
     }
   ]
 }

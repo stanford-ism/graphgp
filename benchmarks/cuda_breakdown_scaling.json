@@ -13,7 +13,7 @@
     "graph": {
       "strict": true,
       "serial_depth": false,
-      "fuse": true,
+      "fuse": false,
       "factor": 5.0
     },
     "timing_runs": 5,
@@ -162,17 +162,10 @@
       "cuda": true
     },
     {
-      "n": 1000000000,
+      "n": 600000000,
       "n0": 1000,
       "d": 3,
-      "k": 4,
-      "cuda": true
-    },
-    {
-      "n": 1000000000,
-      "n0": 1000,
-      "d": 3,
-      "k": 8,
+      "k": 16,
       "cuda": true
     }
   ]

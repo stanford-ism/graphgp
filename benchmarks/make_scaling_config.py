@@ -4,7 +4,7 @@ config = {
   "defaults": {
     "covariance": {"matern_p": 0, "discrete_cov": True, "r_min": 1e-5, "r_max": 10.0, "n_bins": 1000},
     "distribution": {"type": "gaussian"},
-    "graph": {"strict": True, "serial_depth": False, "factor": 5.0},
+    "graph": {"strict": True, "serial_depth": False, "fuse": True, "factor": 5.0},
     "timing_runs": 5,
     "cuda": False,
     "seed": 137
@@ -12,8 +12,10 @@ config = {
   "runs": [],
 }
 
-for n in [1_000_000, 3_000_000, 10_000_000, 30_000_000, 100_000_000, 300_000_000]:
+for n in [1_000_000, 3_000_000, 10_000_000, 30_000_000, 100_000_000, 300_000_000, 600_000_000, 1_000_000_000]:
     for k in [4, 8, 16]:
+        if n > 300_000_000 and k > 8:
+            continue
         for strict in [True]:
             for cuda in [True, False]:
                 run_config = {
