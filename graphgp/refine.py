@@ -21,6 +21,7 @@ def generate(
     xi: Array,
     *,
     cuda: bool = False,
+    use_cholesky: bool = True,
 ) -> Array:
     """
     Generate a GP with dense Cholesky for the first layer followed by conditional refinement.
@@ -39,14 +40,14 @@ def generate(
     n0 = len(graph.points) - len(graph.neighbors)
     if graph.indices is not None:
         xi = xi[graph.indices]
-    initial_values = generate_dense(graph.points[:n0], covariance, xi[:n0])
+    initial_values = generate_dense(graph.points[:n0], covariance, xi[:n0], use_cholesky=use_cholesky)
     values = refine(graph.points, graph.neighbors, graph.offsets, covariance, initial_values, xi[n0:], cuda=cuda)
     if graph.indices is not None:
         values = jnp.empty_like(values).at[graph.indices].set(values)
     return values
 
 
-def generate_dense(points: Array, covariance: CovarianceType, xi: Array) -> Array:
+def generate_dense(points: Array, covariance: CovarianceType, xi: Array, *, use_cholesky: bool = True) -> Array:
     """
     Generate a GP with a dense Cholesky decomposition. Note that to compare with the GraphGP values,
     the points must be provided in tree order.
@@ -59,7 +60,11 @@ def generate_dense(points: Array, covariance: CovarianceType, xi: Array) -> Arra
         The generated values of shape ``(N,).``
     """
     K = compute_cov_matrix(covariance, points, points)
-    L = jnp.linalg.cholesky(K)
+    if use_cholesky:
+        L = jnp.linalg.cholesky(K)
+    else:
+        from .utils import _sqrtm
+        L = _sqrtm(K)
     values = L @ xi
     return values
 
