@@ -103,9 +103,19 @@ def refine(
     if cuda:
         if not has_cuda:
             raise ImportError("CUDA extension not installed, cannot use cuda=True.")
+        if jax.config.jax_enable_x64:
+            # TODO build generic float64 support
+            points = points.astype(jnp.float32)
+            neighbors = neighbors.astype(jnp.int32)
+            offsets = jnp.asarray(offsets, dtype=jnp.int32)
+            initial_values = initial_values.astype(jnp.float32)
+            xi = xi.astype(jnp.float32)
+            covariance = tuple(cc.astype(jnp.float32) for cc in _cuda_process_covariance(covariance))
         values = graphgp_cuda.refine(
             points, neighbors, jnp.asarray(offsets), *_cuda_process_covariance(covariance), initial_values, xi
         )
+        if jax.config.jax_enable_x64:
+            values = values.astype(jnp.float64)
     else:
         values = initial_values
         for i in range(1, len(offsets)):
