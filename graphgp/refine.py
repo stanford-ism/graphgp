@@ -21,6 +21,7 @@ def generate(
     xi: Array,
     *,
     cuda: bool = False,
+    use_cholesky: bool = True,
 ) -> Array:
     """
     Generate a GP with dense Cholesky for the first layer followed by conditional refinement.
@@ -39,14 +40,14 @@ def generate(
     n0 = len(graph.points) - len(graph.neighbors)
     if graph.indices is not None:
         xi = xi[graph.indices]
-    initial_values = generate_dense(graph.points[:n0], covariance, xi[:n0])
+    initial_values = generate_dense(graph.points[:n0], covariance, xi[:n0], use_cholesky=use_cholesky)
     values = refine(graph.points, graph.neighbors, graph.offsets, covariance, initial_values, xi[n0:], cuda=cuda)
     if graph.indices is not None:
         values = jnp.empty_like(values).at[graph.indices].set(values)
     return values
 
 
-def generate_dense(points: Array, covariance: CovarianceType, xi: Array) -> Array:
+def generate_dense(points: Array, covariance: CovarianceType, xi: Array, *, use_cholesky: bool = True) -> Array:
     """
     Generate a GP with a dense Cholesky decomposition. Note that to compare with the GraphGP values,
     the points must be provided in tree order.
@@ -59,7 +60,11 @@ def generate_dense(points: Array, covariance: CovarianceType, xi: Array) -> Arra
         The generated values of shape ``(N,).``
     """
     K = compute_cov_matrix(covariance, points, points)
-    L = jnp.linalg.cholesky(K)
+    if use_cholesky:
+        L = jnp.linalg.cholesky(K)
+    else:
+        from .utils import _sqrtm
+        L = _sqrtm(K)
     values = L @ xi
     return values
 
@@ -98,9 +103,19 @@ def refine(
     if cuda:
         if not has_cuda:
             raise ImportError("CUDA extension not installed, cannot use cuda=True.")
+        if jax.config.jax_enable_x64:
+            # TODO build generic float64 support
+            points = points.astype(jnp.float32)
+            neighbors = neighbors.astype(jnp.int32)
+            offsets = jnp.asarray(offsets, dtype=jnp.int32)
+            initial_values = initial_values.astype(jnp.float32)
+            xi = xi.astype(jnp.float32)
+            covariance = tuple(cc.astype(jnp.float32) for cc in _cuda_process_covariance(covariance))
         values = graphgp_cuda.refine(
             points, neighbors, jnp.asarray(offsets), *_cuda_process_covariance(covariance), initial_values, xi
         )
+        if jax.config.jax_enable_x64:
+            values = values.astype(jnp.float64)
     else:
         values = initial_values
         for i in range(1, len(offsets)):
