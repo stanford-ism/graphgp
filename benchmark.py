@@ -42,6 +42,8 @@ from datetime import datetime
 import jax
 import jax.numpy as jnp
 import jax.random as jr
+from jax.tree_util import Partial
+
 import numpy as np
 
 import graphgp as gp
@@ -90,22 +92,22 @@ def run_single_benchmark(test_params):
 
     # Use test-specific random seed
     test_rng = jr.key(test_params["seed"])
-    test_rng, k1, k2 = jr.split(test_rng, 3)
+    test_rng, k1 = jr.split(test_rng, 2)
 
     # Generate points according to distribution
     points = generate_points(k1, test_params["n"], test_params["d"], test_params["distribution"])
-    xi = jr.normal(k2, (test_params["n"],))
 
     # Build graph with timing
     graph_timings = {}
 
     if test_params["graph"]["strict"]:
         if test_params["graph"]["fuse"]:
-            # Time all-cuda build graph
-            start = time.perf_counter()
-            graph = gp.build_graph(points, n0=test_params["n0"], k=test_params["k"], cuda=test_params["cuda"])
-            graph.points.block_until_ready()
-            graph_timings["build_graph"] = time.perf_counter() - start
+            for i in range(2):
+                # Time all-cuda build graph
+                start = time.perf_counter()
+                graph = gp.build_graph(points, n0=test_params["n0"], k=test_params["k"], cuda=test_params["cuda"])
+                graph.points.block_until_ready()
+                graph_timings["build_graph"] = time.perf_counter() - start
 
         else:
             # Time build_tree
@@ -150,59 +152,63 @@ def run_single_benchmark(test_params):
 
             graph = gp.Graph(points_final, neighbors_final, offsets, indices_final)
     else:
-        # Time build_tree for lazy graph
-        start = time.perf_counter()
-        points_reordered, split_dims, indices = build_tree(points)
-        graph_timings["build_tree"] = time.perf_counter() - start
+        raise NotImplementedError("Lazy graph is currently broken.")
+        # # Time build_tree for lazy graph
+        # start = time.perf_counter()
+        # points_reordered, split_dims, indices = build_tree(points)
+        # graph_timings["build_tree"] = time.perf_counter() - start
 
-        # Calculate offsets for lazy graph
-        offsets = [test_params["n0"]]
-        while offsets[-1] < len(points):
-            next_offset = offsets[-1] * test_params["graph"]["factor"]
-            offsets.append(int(min(next_offset, len(points))))
-        offsets = tuple(offsets)
+        # # Calculate offsets for lazy graph
+        # offsets = [test_params["n0"]]
+        # while offsets[-1] < len(points):
+        #     next_offset = offsets[-1] * test_params["graph"]["factor"]
+        #     offsets.append(int(min(next_offset, len(points))))
+        # offsets = tuple(offsets)
 
-        # Time query_offset_neighbors
-        start = time.perf_counter()
-        neighbors = query_offset_neighbors(points_reordered, split_dims, offsets=offsets, k=test_params["k"], cuda=True)
-        graph_timings["query_neighbors"] = time.perf_counter() - start
+        # # Time query_offset_neighbors
+        # start = time.perf_counter()
+        # neighbors = query_offset_neighbors(points_reordered, split_dims, offsets=offsets, k=test_params["k"], cuda=True)
+        # graph_timings["query_neighbors"] = time.perf_counter() - start
 
-        graph = gp.Graph(points_reordered, neighbors[:, ::-1], offsets, indices)
+        # graph = gp.Graph(points_reordered, neighbors[:, ::-1], offsets, indices)
 
-    level_sizes = np.diff(graph.offsets).tolist()
+    # level_sizes = np.diff(graph.offsets).tolist()
     graph_depth = len(graph.offsets)
 
-    # Warmup with timing (JIT compilation) - always just one run
-    start = time.perf_counter()
-    func = jax.jit(gp.generate, static_argnames=("cuda",))
-    output = func(graph, covariance, xi, cuda=test_params["cuda"])
-    output.block_until_ready()
-    warmup_time = time.perf_counter() - start
+    if test_params["function"] == "forward":
+        func = jax.jit(lambda g, c, xi: gp.generate(g, c, xi, cuda=test_params["cuda"]))
+    elif test_params["function"] == "jvp":
+        func = jax.jit(lambda g, c, xi: jax.jvp(lambda x: gp.generate(g, c, x, cuda=test_params["cuda"]), (xi,), (xi,))[1])
+    elif test_params["function"] == "vjp":
+        func = jax.jit(lambda g, c, xi: jax.vjp(lambda x: gp.generate(g, c, x, cuda=test_params["cuda"]), xi)[1](xi)[0])
+    elif test_params["function"] == "grad":
+        func = jax.jit(lambda g, c, xi: jax.grad(lambda x: jnp.sum(gp.generate(g, c, x, cuda=test_params["cuda"])))(xi))
+    elif test_params["function"] == "fft":
+        @jax.jit
+        def func(g, c, xi):
+            for d in range(test_params["d"]):
+                xi = jnp.fft.fft(xi)
+            return xi
 
-    # Memory stats
-    stats = func.lower(graph, covariance, xi, cuda=test_params["cuda"]).compile().memory_analysis()
-    total_mem = stats.temp_size_in_bytes + stats.argument_size_in_bytes + stats.output_size_in_bytes
-
-    # Time multiple runs
+    # Time multiple runs with 1 warmup
     times = []
-    for _ in range(test_params["timing_runs"]):
+    for _ in range(1 + test_params["timing_runs"]):
+        test_rng, k2 = jr.split(test_rng)
+        xi = jr.normal(k2, (test_params["n"],))
         start = time.perf_counter()
-        output = func(graph, covariance, xi, cuda=test_params["cuda"])
+        output = func(graph, covariance, xi)
         output.block_until_ready()
         times.append(time.perf_counter() - start)
+    warmup_time = times[0]
+    mean_time = np.mean(times[1:])
+    std_time = np.std(times[1:])
 
-    mean_time = np.mean(times)
-    std_time = np.std(times)
-
-    # warmup_time = 0
-    # total_mem = 0
-    # mean_time = 0
-    # std_time = 0
-    # times = [0, 0]
+    # Memory stats
+    stats = func.lower(graph, covariance, xi).compile().memory_analysis()
+    total_mem = stats.temp_size_in_bytes + stats.argument_size_in_bytes + stats.output_size_in_bytes
 
     result = {
         "parameters": test_params.copy(),
-        # "level_sizes": level_sizes,
         "graph_depth": graph_depth,
         "graph_timings": {k: float(v) for k, v in graph_timings.items()},
         "warmup_time": float(warmup_time),
@@ -260,7 +266,7 @@ def main():
         # Print forward pass time with std on fourth line
         mean_ms = 1000 * result["timing"]["mean"]
         std_ms = 1000 * result["timing"]["std"]
-        print(f"Forward pass: {mean_ms:.2f} ± {std_ms:.2f} ms")
+        print(f"Run: {mean_ms:.2f} ± {std_ms:.2f} ms")
 
         # Save results after each run if output file is specified
         if args.output:

@@ -159,19 +159,24 @@ def refine_inv(
     Inverse of ``refine``.
     """
     if cuda:
-        raise NotImplementedError("CUDA support is not implemented.")
-    n0 = len(points) - len(neighbors)
-    initial_values = values[:n0]
-    xi = jnp.array([], dtype=values.dtype)
-    for i in range(len(offsets) - 1, 0, -1):
-        start = offsets[i - 1]
-        end = offsets[i]
-        coarse_points = jnp.take(points, neighbors[start - n0 : end - n0], axis=0)
-        coarse_values = jnp.take(values, neighbors[start - n0 : end - n0], axis=0)
-        fine_point = points[start:end]
-        fine_value = values[start:end]
-        mean, std = jax.vmap(Partial(_conditional_mean_std, covariance))(coarse_points, coarse_values, fine_point)
-        xi = jnp.concatenate([(fine_value - mean) / std, xi], axis=0)
+        if not has_cuda:
+            raise ImportError("CUDA extension not installed, cannot use cuda=True.")
+        initial_values, xi = graphgp_cuda.refine_inv(
+            points, neighbors, jnp.asarray(offsets), *_cuda_process_covariance(covariance), values
+        )
+    else:
+        n0 = len(points) - len(neighbors)
+        initial_values = values[:n0]
+        xi = jnp.array([], dtype=values.dtype)
+        for i in range(len(offsets) - 1, 0, -1):
+            start = offsets[i - 1]
+            end = offsets[i]
+            coarse_points = jnp.take(points, neighbors[start - n0 : end - n0], axis=0)
+            coarse_values = jnp.take(values, neighbors[start - n0 : end - n0], axis=0)
+            fine_point = points[start:end]
+            fine_value = values[start:end]
+            mean, std = jax.vmap(Partial(_conditional_mean_std, covariance))(coarse_points, coarse_values, fine_point)
+            xi = jnp.concatenate([(fine_value - mean) / std, xi], axis=0)
     return initial_values, xi
 
 
@@ -204,16 +209,21 @@ def refine_logdet(
     Log determinant of ``refine``.
     """
     if cuda:
-        raise NotImplementedError("CUDA support is not implemented.")
-    logdet = jnp.array(0.0)
-    n0 = len(points) - len(neighbors)
-    for i in range(1, len(offsets)):
-        start = offsets[i - 1]
-        end = offsets[i]
-        coarse_points = jnp.take(points, neighbors[start - n0 : end - n0], axis=0)
-        fine_point = points[start:end]
-        std = jax.vmap(Partial(_conditional_std, covariance))(coarse_points, fine_point)
-        logdet += jnp.sum(jnp.log(std))
+        if not has_cuda:
+            raise ImportError("CUDA extension not installed, cannot use cuda=True.")
+        logdet = graphgp_cuda.refine_logdet(
+            points, neighbors, jnp.asarray(offsets), *_cuda_process_covariance(covariance)
+        )
+    else:
+        logdet = jnp.array(0.0)
+        n0 = len(points) - len(neighbors)
+        for i in range(1, len(offsets)):
+            start = offsets[i - 1]
+            end = offsets[i]
+            coarse_points = jnp.take(points, neighbors[start - n0 : end - n0], axis=0)
+            fine_point = points[start:end]
+            std = jax.vmap(Partial(_conditional_std, covariance))(coarse_points, fine_point)
+            logdet += jnp.sum(jnp.log(std))
     return logdet
 
 
