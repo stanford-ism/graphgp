@@ -234,6 +234,7 @@ def _conditional_mean_std(covariance, coarse_points, coarse_values, fine_point):
     L = jnp.linalg.cholesky(K)
     mean = L[k, :k] @ jnp.linalg.solve(L[:k, :k], coarse_values)
     std = L[k, k]
+    std = std
     return mean, std
 
 

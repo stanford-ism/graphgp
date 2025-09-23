@@ -77,6 +77,7 @@ def generate_points(rng, n_points, n_dim, distribution_params):
 
 def run_single_benchmark(test_params):
     """Run benchmark for a single parameter combination."""
+
     # Build covariance
     cov_func = gp.MaternCovariance(p=test_params["covariance"]["matern_p"])
     if test_params["covariance"]["discrete_cov"]:
@@ -104,6 +105,8 @@ def run_single_benchmark(test_params):
         if test_params["graph"]["fuse"]:
             for i in range(2):
                 # Time all-cuda build graph
+                if i > 0:
+                    del graph
                 start = time.perf_counter()
                 graph = gp.build_graph(points, n0=test_params["n0"], k=test_params["k"], cuda=test_params["cuda"])
                 graph.points.block_until_ready()
@@ -172,9 +175,9 @@ def run_single_benchmark(test_params):
 
         # graph = gp.Graph(points_reordered, neighbors[:, ::-1], offsets, indices)
 
-    # level_sizes = np.diff(graph.offsets).tolist()
-    graph_depth = len(graph.offsets)
+    
 
+    # Prepare function to benchmark
     if test_params["function"] == "forward":
         func = jax.jit(lambda g, c, xi: gp.generate(g, c, xi, cuda=test_params["cuda"]))
     elif test_params["function"] == "jvp":
@@ -183,16 +186,27 @@ def run_single_benchmark(test_params):
         func = jax.jit(lambda g, c, xi: jax.vjp(lambda x: gp.generate(g, c, x, cuda=test_params["cuda"]), xi)[1](xi)[0])
     elif test_params["function"] == "grad":
         func = jax.jit(lambda g, c, xi: jax.grad(lambda x: jnp.sum(gp.generate(g, c, x, cuda=test_params["cuda"])))(xi))
+    elif test_params["function"] == "inverse":
+        func = jax.jit(lambda g, c, xi: gp.generate_inv(g, c, xi, cuda=test_params["cuda"]))
+    elif test_params["function"] == "logdet":
+        func = jax.jit(lambda g, c, xi: gp.generate_logdet(g, c, cuda=test_params["cuda"]))
     elif test_params["function"] == "fft":
+        graph.points = None
+        graph.neighbors = None
         @jax.jit
         def func(g, c, xi):
             for d in range(test_params["d"]):
                 xi = jnp.fft.fft(xi)
             return xi
 
+    # Don't re-order points, this significantly impacts runtime
+    graph.indices = None
+
     # Time multiple runs with 1 warmup
     times = []
-    for _ in range(1 + test_params["timing_runs"]):
+    for i in range(1 + test_params["timing_runs"]):
+        if i > 0:
+            del xi, output
         test_rng, k2 = jr.split(test_rng)
         xi = jr.normal(k2, (test_params["n"],))
         start = time.perf_counter()
@@ -209,7 +223,7 @@ def run_single_benchmark(test_params):
 
     result = {
         "parameters": test_params.copy(),
-        "graph_depth": graph_depth,
+        "graph_depth": len(graph.offsets),
         "graph_timings": {k: float(v) for k, v in graph_timings.items()},
         "warmup_time": float(warmup_time),
         "compiled_memory_mb": float(total_mem / (1024**2)),
@@ -221,29 +235,42 @@ def run_single_benchmark(test_params):
 
 def main():
     parser = argparse.ArgumentParser(description="Benchmark graphgp algorithm performance")
-    parser.add_argument("--config", type=str, required=True, help="Path to JSON configuration file")
+    parser.add_argument("--config", type=str, help="Path to JSON configuration file")
     parser.add_argument("--output", type=str, help="Output file for results (if not provided, only prints results)")
+    parser.add_argument("--continue", dest="continue_run", action="store_true", 
+                        help="Continue an existing benchmark run from output file")
 
     args = parser.parse_args()
 
-    # Load configuration
-    with open(args.config, "r") as f:
-        config = json.load(f)
+    # Load configuration and existing results
+    if args.continue_run:
+        if args.config:
+            raise ValueError("Cannot specify --config when using --continue to avoid conflicts.")
+        if not args.output:
+            raise ValueError("Must specify --output when using --continue to load existing results.")
+        with open(args.output, "r") as f:
+            output_data = json.load(f)
+        config = output_data["config"]
+        results = output_data["results"]
+        print(f"Continuing from {args.output}: {len(results)}/{len(config['runs'])} completed")
+    else:
+        if not args.config:
+            raise ValueError("Must specify --config when not continuing from an existing run.")
+        with open(args.config, "r") as f:
+            config = json.load(f)
+        results = []
+        print(f"Running {len(config["runs"])} benchmark combinations...")
+    print("-" * 50)
 
     # Merge defaults with each test combination
     run_configs = []
     for test_params in config["runs"]:
-        # Start with defaults and override with test-specific params
         merged_params = config["defaults"].copy()
         merged_params.update(test_params)
         run_configs.append(merged_params)
 
-    # Run benchmarks
-    results = []
-    print(f"Running {len(run_configs)} benchmark combinations...")
-    print("-" * 50)
-
-    for i, test_params in enumerate(run_configs):
+    for i in range(len(results), len(run_configs)):
+        test_params = run_configs[i]
         print(f"Benchmark {i + 1}/{len(run_configs)}")
         param_str = ", ".join([f"{k}={v}" for k, v in config["runs"][i].items()])
         print(f"{param_str}", flush=True)
