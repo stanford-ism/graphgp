@@ -46,6 +46,23 @@ def generate(
         values = jnp.empty_like(values).at[graph.indices].set(values)
     return values
 
+def my_compute_cov_matrix(covariance, points_a, points_b):
+    if isinstance(covariance, tuple):
+        if len(covariance) == 2:
+            return compute_cov_matrix(covariance, points_a, points_b)
+        elif len(covariance) == 3:
+            ndims, cov_bins, cov_vals = covariance
+            nn = ndims[0]
+            res = compute_cov_matrix((cov_bins[0], cov_vals[0]),
+            points_a[..., :nn], points_b[..., :nn])
+            for i in range(1, len(ndims)):
+                res *= compute_cov_matrix((cov_bins[i], cov_vals[i]),
+                points_a[..., nn:nn+ndims[i]], points_b[..., nn:nn+ndims[i]])
+                nn += ndims[i]
+            return res
+        else:
+            raise ValueError("Invalid covariance specification.")
+
 
 def generate_dense(points: Array, covariance: CovarianceType, xi: Array, *, use_cholesky: bool = True) -> Array:
     """
@@ -59,7 +76,7 @@ def generate_dense(points: Array, covariance: CovarianceType, xi: Array, *, use_
     Returns:
         The generated values of shape ``(N,).``
     """
-    K = compute_cov_matrix(covariance, points, points)
+    K = my_compute_cov_matrix(covariance, points, points)
     if use_cholesky:
         L = jnp.linalg.cholesky(K)
     else:
@@ -68,6 +85,14 @@ def generate_dense(points: Array, covariance: CovarianceType, xi: Array, *, use_
     values = L @ xi
     return values
 
+def _conditional_mean_std_vec(covariance, coarse_points, fine_point):
+    k = len(coarse_points)
+    joint_points = jnp.concatenate([coarse_points, fine_point[jnp.newaxis]], axis=0)
+    K = my_compute_cov_matrix(covariance, joint_points, joint_points)
+    L = jnp.linalg.cholesky(K)
+    mean = jnp.linalg.solve(L[:k, :k].T, L[k, :k].T).T
+    std = L[k, k]
+    return mean, std
 
 def refine(
     points: Array,
@@ -117,16 +142,25 @@ def refine(
         if jax.config.jax_enable_x64:
             values = values.astype(jnp.float64)
     else:
+        coarse_points = points[neighbors]
+        mean, std = jax.vmap(Partial(_conditional_mean_std_vec, covariance))(coarse_points, points[n0:])
+        mean = jax.block_until_ready(mean)
+        std = jax.block_until_ready(std)
+
+        @jax.vmap
+        def single(mean, std, xi, values):
+            return jnp.vdot(mean, values) + std * xi
+
         values = initial_values
         for i in range(1, len(offsets)):
             start = offsets[i - 1]
             end = offsets[i]
-            coarse_points = jnp.take(points, neighbors[start - n0 : end - n0], axis=0)
-            coarse_values = jnp.take(values, neighbors[start - n0 : end - n0], axis=0)
-            fine_point = points[start:end]
+            means = mean[start - n0 : end - n0]
+            stds = std[start - n0 : end - n0]
+            coarse_values = values[neighbors[start - n0 : end - n0]]
             fine_xi = xi[start - n0 : end - n0]
-            mean, std = jax.vmap(Partial(_conditional_mean_std, covariance))(coarse_points, coarse_values, fine_point)
-            values = jnp.concatenate([values, mean + std * fine_xi], axis=0)
+            res = single(means, stds, fine_xi, coarse_values)
+            values = jnp.concatenate([values, res], axis=0)
     return values
 
 
@@ -155,7 +189,7 @@ def generate_dense_inv(points: Array, covariance: CovarianceType, values: Array)
     """
     Inverse of ``generate_dense``.
     """
-    K = compute_cov_matrix(covariance, points, points)
+    K = my_compute_cov_matrix(covariance, points, points)
     L = jnp.linalg.cholesky(K)
     xi = jnp.linalg.solve(L, values)
     return xi
@@ -208,7 +242,7 @@ def generate_dense_logdet(points: Array, covariance: CovarianceType) -> Array:
     """
     Log determinant of ``generate_dense``.
     """
-    K = compute_cov_matrix(covariance, points, points)
+    K = my_compute_cov_matrix(covariance, points, points)
     return jnp.linalg.slogdet(K)[1] / 2
 
 
@@ -245,7 +279,7 @@ def refine_logdet(
 def _conditional_mean_std(covariance, coarse_points, coarse_values, fine_point):
     k = len(coarse_points)
     joint_points = jnp.concatenate([coarse_points, fine_point[jnp.newaxis]], axis=0)
-    K = compute_cov_matrix(covariance, joint_points, joint_points)
+    K = my_compute_cov_matrix(covariance, joint_points, joint_points)
     L = jnp.linalg.cholesky(K)
     mean = L[k, :k] @ jnp.linalg.solve(L[:k, :k], coarse_values)
     std = L[k, k]
@@ -256,7 +290,7 @@ def _conditional_mean_std(covariance, coarse_points, coarse_values, fine_point):
 def _conditional_std(covariance, coarse_points, fine_point):
     k = len(coarse_points)
     joint_points = jnp.concatenate([coarse_points, fine_point[jnp.newaxis]], axis=0)
-    K = compute_cov_matrix(covariance, joint_points, joint_points)
+    K = my_compute_cov_matrix(covariance, joint_points, joint_points)
     L = jnp.linalg.cholesky(K)
     return L[k, k]
 
