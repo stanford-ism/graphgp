@@ -47,6 +47,7 @@ def generate(
     return values
 
 def my_compute_cov_matrix(covariance, points_a, points_b):
+    # FIXME: Temporary hack to handle non-stationary covariance functions
     if isinstance(covariance, tuple):
         if len(covariance) == 2:
             return compute_cov_matrix(covariance, points_a, points_b)
