@@ -55,10 +55,14 @@ def my_compute_cov_matrix(covariance, points_a, points_b):
             nn = ndims[0]
             res = compute_cov_matrix((cov_bins[0], cov_vals[0]),
             points_a[..., :nn], points_b[..., :nn])
+            identity = jnp.eye(res.shape[0])
+            res += identity
             for i in range(1, len(ndims)):
-                res *= compute_cov_matrix((cov_bins[i], cov_vals[i]),
+                cv = compute_cov_matrix((cov_bins[i], cov_vals[i]),
                 points_a[..., nn:nn+ndims[i]], points_b[..., nn:nn+ndims[i]])
+                res *= (cv + identity)
                 nn += ndims[i]
+            res -= identity
             return res
         else:
             raise ValueError("Invalid covariance specification.")
