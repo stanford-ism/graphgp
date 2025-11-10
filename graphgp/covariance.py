@@ -1,29 +1,9 @@
-from dataclasses import dataclass, field
 from typing import Callable, Tuple, Any, Union
 
 import jax
 import jax.numpy as jnp
-from jax.tree_util import Partial, register_dataclass
 from jax import Array
 from jax.scipy.special import gammaln
-
-CovarianceType = Union[Callable[[Array], Array], Tuple[Array, Callable[[Array], Array]], Tuple[Array, Array]]
-
-
-@register_dataclass
-@dataclass
-class MaternCovariance:
-    """
-    Matern covariance function for nu = p + 1/2. Power spectrum has -(nu + n/2) slope. Not differentiable with respect to ``p``. Simply calls ``compute_matern_covariance``.
-
-    This dataclass can be passed to jit-compiled functions since ``p`` is marked as static. It can be called just like a normal function.
-    """
-
-    p: int = field(default=0, metadata=dict(static=True))
-    eps: float = field(default=1e-5, metadata=dict(static=True))
-
-    def __call__(self, r: Array, *, sigma: float = 1.0, cutoff: float = 1.0):
-        return compute_matern_covariance(r, p=self.p, sigma=sigma, cutoff=cutoff, eps=self.eps)
 
 
 def compute_matern_covariance(
@@ -31,8 +11,6 @@ def compute_matern_covariance(
 ) -> Array:
     """
     Matern covariance function for nu = p + 1/2. Power spectrum has -(nu + n/2) slope. Not differentiable with respect to ``p``.
-
-    Cannot be passed to jit-compiled functions. Use ``MaternCovariance`` object in that case.
     """
     x = jnp.sqrt(2 * p + 1) * r / cutoff
     i = jnp.arange(p + 1)
@@ -45,30 +23,30 @@ def compute_matern_covariance(
     return result
 
 
-def prepare_matern_covariance_discrete(
-    *, p: int = 0, sigma: float = 1.0, cutoff: float = 1.0, eps: float = 1e-5, r_min: float, r_max: float, n_bins: int
-) -> Tuple[Array, Callable[[Array], Array]]:
+def compute_matern_covariance_discrete(
+    *,
+    p: int = 0,
+    sigma: float = 1.0,
+    cutoff: float = 1.0,
+    eps: float = 1e-5,
+    r_min: float = 1e-3,
+    r_max: float = 1e3,
+    n_bins: int = 1000,
+) -> Tuple[Array, Array]:
     cov_bins = make_cov_bins(r_min=r_min, r_max=r_max, n_bins=n_bins)
-    return (cov_bins, Partial(MaternCovariance(p=p, eps=eps), sigma=sigma, cutoff=cutoff))
-
-
-def _log_factorial(x):
-    return gammaln(x + 1)
+    cov_vals = compute_matern_covariance(cov_bins, p=p, sigma=sigma, cutoff=cutoff, eps=eps)
+    return (cov_bins, cov_vals)
 
 
 def compute_cov_matrix(
-    covariance: Tuple[Array, Array] | Tuple[Array, Callable] | Callable, points_a: Array, points_b: Array
+    covariance: Tuple[Array, Array], points_a: Array, points_b: Array
 ) -> Array:
     """
     Compute the covariance matrix between two sets of points given a covariance function.
     """
     distances = jnp.expand_dims(points_a, -2) - jnp.expand_dims(points_b, -3)
     distances = jnp.linalg.norm(distances, axis=-1)
-    if isinstance(covariance, Callable):
-        return covariance(distances)
-    elif isinstance(covariance, Tuple) and isinstance(covariance[0], Array) and isinstance(covariance[1], Callable):
-        return covariance[1](distances)
-    elif isinstance(covariance, Tuple) and isinstance(covariance[0], Array) and isinstance(covariance[1], Array):
+    if isinstance(covariance, Tuple) and isinstance(covariance[0], Array) and isinstance(covariance[1], Array):
         cov_bins, cov_vals = covariance
         return cov_lookup(distances, cov_bins, cov_vals)
     else:
@@ -102,3 +80,7 @@ def cov_lookup(r, cov_bins, cov_vals):
     c = jnp.where(idx == len(cov_bins), c0, c)
     c = jnp.where(r0 == r1, c0, c)
     return c
+
+
+def _log_factorial(x):
+    return gammaln(x + 1)

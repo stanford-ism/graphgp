@@ -16,28 +16,30 @@ config = {
 
 d = 3
 
-for n in [1_000_000, 3_000_000, 10_000_000, 30_000_000, 100_000_000, 300_000_000, 600_000_000, 1_000_000_000]:
+for cuda in [True, False]:
+    for n in [1_000_000, 3_000_000, 10_000_000, 30_000_000, 100_000_000]:
+        for k in [1, 2, 4, 8, 16]:
+            for function in ["forward", "jvp", "vjp", "grad", "inverse", "logdet"]:
+                # if n * (d + d + k + 4) > 15 * 1e9:
+                #     continue
+                run_config = {
+                    "n": n,
+                    "n0": 1000,
+                    "d": d,
+                    "k": k,
+                    "cuda": cuda,
+                    "function": function,
+                }
+                config["runs"].append(run_config)
 
-    for k in [1, 2, 4, 8, 16]:
-        if n * (d + d + k + 4) > 15 * 1e9:
-            continue
-        for cuda in [True]:
-            run_config = {
+        if cuda is True:
+            config["runs"].append({
                 "n": n,
                 "n0": 1000,
                 "d": d,
-                "k": k,
-                "cuda": cuda,
-            }
-            config["runs"].append(run_config)
+                "k": 1,
+                "function": "fft",
+            })
 
-    config["runs"].append({
-        "n": n,
-        "n0": 1000,
-        "d": d,
-        "k": 1,
-        "function": "fft",
-    })
-
-with open("benchmarks/cuda_scaling.json", "w") as f:
+with open("benchmarks/compare_all.json", "w") as f:
     json.dump(config, f, indent=2)

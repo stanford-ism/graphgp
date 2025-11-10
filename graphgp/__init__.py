@@ -8,7 +8,7 @@ from .graph import (
     compute_depths_serial,
     order_by_depth,
 )
-from .covariance import MaternCovariance, compute_matern_covariance, prepare_matern_covariance_discrete, compute_cov_matrix, make_cov_bins
+from .covariance import compute_matern_covariance, compute_matern_covariance_discrete, compute_cov_matrix, make_cov_bins
 from .refine import (
     generate,
     generate_inv,

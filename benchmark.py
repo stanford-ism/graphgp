@@ -86,8 +86,8 @@ def run_single_benchmark(test_params):
             r_max=test_params["covariance"]["r_max"],
             n_bins=test_params["covariance"]["n_bins"],
         )
-        cov_vals = cov_func(cov_bins)
-        covariance = (cov_bins, cov_vals)
+        # cov_vals = cov_func(cov_bins)
+        covariance = (cov_bins, cov_func)
     else:
         covariance = cov_func
 
@@ -181,11 +181,11 @@ def run_single_benchmark(test_params):
     if test_params["function"] == "forward":
         func = jax.jit(lambda g, c, xi: gp.generate(g, c, xi, cuda=test_params["cuda"]))
     elif test_params["function"] == "jvp":
-        func = jax.jit(lambda g, c, xi: jax.jvp(lambda x: gp.generate(g, c, x, cuda=test_params["cuda"]), (xi,), (xi,))[1])
+        func = jax.jit(lambda g, c, xi: jax.jvp(lambda x, cutoff: gp.generate(g, (c[0], Partial(c[1], cutoff=cutoff)), x, cuda=test_params["cuda"]), (xi, 1.0), (jnp.ones_like(xi), 1.0))[1])
     elif test_params["function"] == "vjp":
-        func = jax.jit(lambda g, c, xi: jax.vjp(lambda x: gp.generate(g, c, x, cuda=test_params["cuda"]), xi)[1](xi)[0])
+        func = jax.jit(lambda g, c, xi: jax.vjp(lambda x, cutoff: gp.generate(g, (c[0], Partial(c[1], cutoff=cutoff)), x, cuda=test_params["cuda"]), xi, 1.0)[1](jnp.ones_like(xi))[0])
     elif test_params["function"] == "grad":
-        func = jax.jit(lambda g, c, xi: jax.grad(lambda x: jnp.sum(gp.generate(g, c, x, cuda=test_params["cuda"])))(xi))
+        func = jax.jit(lambda g, c, xi: jax.grad(lambda x: jnp.linalg.norm(gp.generate(g, c, x, cuda=test_params["cuda"])))(xi))
     elif test_params["function"] == "inverse":
         func = jax.jit(lambda g, c, xi: gp.generate_inv(g, c, xi, cuda=test_params["cuda"]))
     elif test_params["function"] == "logdet":
