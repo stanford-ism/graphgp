@@ -5,7 +5,7 @@ Benchmark script for graphgp algorithm performance testing.
 Sample configuration file format:
 {
   "defaults": {
-    "covariance": {"matern_p": 0, "discrete_cov": true, "r_min": 1e-5, "r_max": 10.0, "n_bins": 1000},
+    "covariance": {"matern_p": 0, "r_min": 1e-5, "r_max": 10.0, "n_bins": 1000},
     "distribution": {"type": "gaussian"},
     "graph": {"strict": true},
     "timing_runs": 5,
@@ -79,17 +79,12 @@ def run_single_benchmark(test_params):
     """Run benchmark for a single parameter combination."""
 
     # Build covariance
-    cov_func = gp.MaternCovariance(p=test_params["covariance"]["matern_p"])
-    if test_params["covariance"]["discrete_cov"]:
-        cov_bins = gp.make_cov_bins(
-            r_min=test_params["covariance"]["r_min"],
-            r_max=test_params["covariance"]["r_max"],
-            n_bins=test_params["covariance"]["n_bins"],
-        )
-        # cov_vals = cov_func(cov_bins)
-        covariance = (cov_bins, cov_func)
-    else:
-        covariance = cov_func
+    covariance = gp.compute_matern_covariance_discrete(
+        p=test_params["covariance"]["matern_p"],
+        r_min=test_params["covariance"]["r_min"],
+        r_max=test_params["covariance"]["r_max"],
+        n_bins=test_params["covariance"]["n_bins"],
+    )
 
     # Use test-specific random seed
     test_rng = jr.key(test_params["seed"])

@@ -108,7 +108,7 @@ def refine(
     if cuda:
         if not has_cuda:
             raise ImportError("CUDA extension not installed, cannot use cuda=True.")
-        values = graphgp_cuda.refine(points, neighbors, jnp.asarray(offsets), *covariance, initial_values, xi)
+        values = graphgp_cuda.refine(points, neighbors, jnp.asarray(offsets, dtype=neighbors.dtype), *covariance, initial_values, xi)
     else:
         if fast_jit:
             k = neighbors.shape[1]
@@ -200,7 +200,7 @@ def refine_inv(
     if cuda:
         if not has_cuda:
             raise ImportError("CUDA extension not installed, cannot use cuda=True.")
-        initial_values, xi = graphgp_cuda.refine_inv(points, neighbors, jnp.asarray(offsets), *covariance, values)
+        initial_values, xi = graphgp_cuda.refine_inv(points, neighbors, jnp.asarray(offsets, dtype=neighbors.dtype), *covariance, values)
     else:
         n0 = len(points) - len(neighbors)
         initial_values = values[:n0]
@@ -248,7 +248,7 @@ def refine_logdet(
     if cuda:
         if not has_cuda:
             raise ImportError("CUDA extension not installed, cannot use cuda=True.")
-        logdet = graphgp_cuda.refine_logdet(points, neighbors, jnp.asarray(offsets), *covariance)
+        logdet = graphgp_cuda.refine_logdet(points, neighbors, jnp.asarray(offsets, dtype=neighbors.dtype), *covariance)
     else:
         logdet = jnp.array(0.0)
         n0 = len(points) - len(neighbors)

@@ -2,7 +2,6 @@
   "defaults": {
     "covariance": {
       "matern_p": 0,
-      "discrete_cov": true,
       "r_min": 1e-05,
       "r_max": 10.0,
       "n_bins": 1000
