@@ -1,11 +1,9 @@
-from .tree import build_tree, query_preceding_neighbors, query_offset_neighbors
+from .tree import build_tree, query_preceding_neighbors
 from .graph import (
     Graph,
     check_graph,
     build_graph,
-    build_lazy_graph,
-    compute_depths_parallel,
-    compute_depths_serial,
+    compute_depths,
     order_by_depth,
 )
 from .covariance import compute_matern_covariance, compute_matern_covariance_discrete, compute_cov_matrix, make_cov_bins
@@ -30,15 +28,11 @@ from .refine import (
 __all__ = [
     "build_tree",
     "query_preceding_neighbors",
-    "query_offset_neighbors",
     "Graph",
     "check_graph",
     "build_graph",
-    "build_lazy_graph",
-    "compute_depths_parallel",
-    "compute_depths_serial",
+    "compute_depths",
     "order_by_depth",
-    "MaternCovariance",
     "compute_matern_covariance",
     "compute_cov_matrix",
     "make_cov_bins",

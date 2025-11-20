@@ -33,7 +33,7 @@ def generate(
 
     Args:
         graph: An instance of ``Graph``, can be checked for validity with ``check_graph``.
-        covariance: cov_func, (cov_bins, cov_func), or (cov_bins, cov_vals). The first is not compatible with cuda=True. If using your own covariance, inflate k(0) by a small factor to ensure SPD.
+        covariance: Tuple of arrays (cov_bins, cov_vals) storing discretized covariance. If using your own covariance, inflate k(0) by a small factor to ensure positive definite.
         xi: Unit normal distributed parameters of shape ``(N,).``
         reorder: Whether to reorder parameters and values according to the original order of the points. Default is ``True``.
         cuda: Whether to use optional CUDA extension, if installed. Will still use CUDA GPU via JAX if available. Default is ``False`` but recommended if possible for performance.
@@ -50,7 +50,7 @@ def generate(
         graph.points, graph.neighbors, graph.offsets, covariance, initial_values, xi[n0:], cuda=cuda, fast_jit=fast_jit
     )
     if graph.indices is not None:
-        values = jnp.empty_like(values).at[graph.indices].set(values)
+        values = jnp.empty_like(values).at[graph.indices].set(values, unique_indices=True)
     return values
 
 
@@ -61,7 +61,7 @@ def generate_dense(points: Array, covariance: Tuple[Array, Array], xi: Array) ->
 
     Args:
         points: Locations of points to model of shape ``(N, d)``
-        covariance: A callable which takes a distance and returns a covariance. Distance zero should be inflated by a small amount to ensure positive definiteness.
+        covariance: Tuple of arrays (cov_bins, cov_vals) storing discretized covariance. If using your own covariance, inflate k(0) by a small factor to ensure positive definite.
         xi: Unit normal distributed parameters of shape ``(N,).``
     Returns:
         The generated values of shape ``(N,).``
@@ -94,7 +94,7 @@ def refine(
         points: Modeled points in tree order of shape ``(N, d)``.
         neighbors: Indices of the neighbors of shape ``(N - offsets[0], k)``.
         offsets: Tuple of length ``B`` representing the end index of each batch.
-        covariance: cov_func, (cov_bins, cov_func), or (cov_bins, cov_vals) The first is not compatible with cuda=True. If using your own covariance, inflate k(0) by a small factor to ensure SPD.
+        covariance: Tuple of arrays (cov_bins, cov_vals) storing discretized covariance. If using your own covariance, inflate k(0) by a small factor to ensure positive definite.
         initial_values: Initial values of shape ``(offsets[0],).``
         xi: Unit normal distributed parameters of shape ``(N - offsets[0],).``
         cuda: Whether to use optional CUDA extension, if installed. Will still use CUDA GPU via JAX if available. Default is ``False`` but recommended if possible for performance.
@@ -171,7 +171,7 @@ def generate_inv(
     initial_xi = generate_dense_inv(graph.points[:n0], covariance, initial_values)
     xi = jnp.concatenate([initial_xi, xi], axis=0)
     if graph.indices is not None:
-        xi = jnp.empty_like(xi).at[graph.indices].set(xi)
+        xi = jnp.empty_like(xi).at[graph.indices].set(xi, unique_indices=True)
     return xi
 
 
@@ -219,7 +219,7 @@ def refine_inv(
 
 def generate_logdet(graph: Graph, covariance: Tuple[Array, Array], *, cuda: bool = False) -> Array:
     """
-    Log determinant of ``generate``. Recommended to JIT compile.
+    Log determinant of ``generate``.
     """
     n0 = len(graph.points) - len(graph.neighbors)
     dense_logdet = generate_dense_logdet(graph.points[:n0], covariance)

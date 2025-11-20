@@ -33,6 +33,11 @@ def compute_matern_covariance_discrete(
     r_max: float = 1e3,
     n_bins: int = 1000,
 ) -> Tuple[Array, Array]:
+    """
+    Matern covariance function for nu = p + 1/2. Power spectrum has -(nu + n/2) slope. Not differentiable with respect to ``p``.
+
+    Discretized onto `n_bins` logarithmically spaced bins between `r_min` and `r_max`, with 0.0 included as the first bin.
+    """
     cov_bins = make_cov_bins(r_min=r_min, r_max=r_max, n_bins=n_bins)
     cov_vals = compute_matern_covariance(cov_bins, p=p, sigma=sigma, cutoff=cutoff, eps=eps)
     return (cov_bins, cov_vals)

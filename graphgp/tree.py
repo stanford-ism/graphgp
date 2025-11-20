@@ -64,34 +64,6 @@ def query_preceding_neighbors(
     return query_neighbors(points, split_dims, query_indices, query_indices, k=k)
 
 
-def query_offset_neighbors(
-    points: Array,
-    split_dims: Array,
-    *,
-    offsets: Tuple[int, ...],
-    k: int,
-    cuda: bool = False,
-) -> Array:
-    """
-    Query the k-nearest neighbors of each point among points in preceding batches.
-
-    Args:
-        points: Input points in tree order of shape ``(N, d)``.
-        split_dims: Split dimension for each point of shape ``(N,)``.
-        offsets: Tuple of length ``B`` representing the end index of each batch.
-        k: Number of neighbors to query.
-
-    Returns:
-        tuple:
-            - neighbors: Indices of the neighbors of shape ``(N - offsets[0], k)``.
-            - distances: Distances to the neighbors of shape ``(N - offsets[0], k)``.
-    """
-    query_indices = jnp.arange(offsets[0], len(points))
-    offsets = jnp.asarray(offsets)
-    max_indices = offsets[jnp.searchsorted(offsets, query_indices, side="right") - 1]
-    return query_neighbors(points, split_dims, query_indices, max_indices, k=k)
-
-
 @Partial(jax.jit, static_argnames=("k", "cuda"))
 def query_neighbors(
     points: Array, split_dims: Array, query_indices: Array, max_indices: Array, *, k: int, cuda: bool = False

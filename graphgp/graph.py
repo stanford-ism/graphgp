@@ -9,7 +9,7 @@ from jax import lax
 
 import numpy as np
 
-from .tree import build_tree, query_preceding_neighbors, query_offset_neighbors
+from .tree import build_tree, query_preceding_neighbors
 
 try:
     import graphgp_cuda
@@ -74,8 +74,7 @@ def check_graph(graph: Graph):
 
 def build_graph(points: Array, *, n0: int, k: int, cuda: bool = False) -> Graph:
     """
-    Build a graph such that all preceding neighbors are strictly included. This is most accurate
-    but is slower to build. The depth of the graph depends on the number of points.
+    Build a graph where each point depends on its ``k`` nearest neighbors which precede it in a k-d tree ordering (the original point order does not matter).
 
     Args:
         points: The input points of shape ``(N, d)``.
@@ -93,7 +92,7 @@ def build_graph(points: Array, *, n0: int, k: int, cuda: bool = False) -> Graph:
     else:
         points, split_dims, indices = build_tree(points)
         neighbors = query_preceding_neighbors(points, split_dims, n0=n0, k=k)
-        depths = compute_depths_parallel(neighbors, n0=n0)
+        depths = compute_depths(neighbors, n0=n0)
         points, indices, neighbors, depths = order_by_depth(points, indices, neighbors, depths)
     offsets = jnp.searchsorted(depths, jnp.arange(1, jnp.max(depths) + 2))
     offsets = tuple(int(x) for x in offsets)
@@ -101,37 +100,8 @@ def build_graph(points: Array, *, n0: int, k: int, cuda: bool = False) -> Graph:
     return Graph(points, neighbors, offsets, indices)
 
 
-def build_lazy_graph(points: Array, *, n0: int, k: int, factor: float = 1.5, max_batch: int | None = None) -> Graph:
-    """
-    Build a graph where preceding neighbors are skipped if they would fall inside the same batch.
-    This is less accurate but faster to build and in some cases faster to use. It has the advantage
-    that the depth of the graph is determined by the number of points and not the distribution.
-
-    Args:
-        points: The input points of shape ``(N, d)``.
-        n0: The number of initial points.
-        k: The number of neighbors to include.
-        factor: The multiplicative factor by which to increase the number of points in each batch.
-        max_batch: The maximum batch size. For accuracy set as small as possible without sacrificing performance.
-
-    Returns:
-        A ``Graph`` dataclass containing ``points``, ``neighbors``, ``offsets``, and ``indices``.
-    """
-    offsets = [n0]
-    while offsets[-1] < len(points):
-        next = offsets[-1] * factor
-        if max_batch is not None:
-            next = min(next, offsets[-1] + max_batch)
-        offsets.append(int(min(next, len(points))))
-    offsets = tuple(offsets)
-
-    points, split_dims, indices = build_tree(points)
-    neighbors, _ = query_offset_neighbors(points, split_dims, offsets=offsets, k=k)
-    return Graph(points, neighbors[:, ::-1], offsets, indices)
-
-
 @Partial(jax.jit, static_argnames=("n0", "cuda"))
-def compute_depths_parallel(neighbors, *, n0, cuda=False):
+def compute_depths(neighbors, *, n0, cuda=False):
     if cuda:
         if not has_cuda:
             raise ImportError("CUDA extension not installed, cannot use cuda=True.")
@@ -149,23 +119,6 @@ def compute_depths_parallel(neighbors, *, n0, cuda=False):
             return jnp.any(old_depths != depths)
 
         depths = jax.lax.while_loop(cond, update, (depths - 1, depths))[1]
-    return depths
-
-
-@Partial(jax.jit, static_argnames=("n0", "cuda"))
-def compute_depths_serial(neighbors, *, n0, cuda=False):
-    if cuda:
-        if not has_cuda:
-            raise ImportError("CUDA extension not installed, cannot use cuda=True.")
-        depths = graphgp_cuda.compute_depths_serial(neighbors, n0=n0)
-    else:
-        depths = jnp.zeros(n0 + len(neighbors), dtype=jnp.int32)
-
-        def update(i, depths):
-            depths = depths.at[i].set(1 + jnp.max(depths[neighbors[i - n0]]))
-            return depths
-
-        depths = jax.lax.fori_loop(n0, n0 + len(neighbors), update, depths)
     return depths
 
 
