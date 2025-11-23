@@ -8,6 +8,7 @@ from .graph import (
 )
 from .covariance import compute_matern_covariance, compute_matern_covariance_discrete, compute_cov_matrix, make_cov_bins
 from .refine import (
+    
     generate,
     generate_inv,
     generate_logdet,
@@ -17,12 +18,6 @@ from .refine import (
     refine,
     refine_inv,
     refine_logdet,
-    generate_jit,
-    generate_inv_jit,
-    generate_logdet_jit,
-    refine_jit,
-    refine_inv_jit,
-    refine_logdet_jit,
 )
 
 __all__ = [
@@ -45,10 +40,4 @@ __all__ = [
     "refine",
     "refine_inv",
     "refine_logdet",
-    "generate_jit",
-    "generate_inv_jit",
-    "generate_logdet_jit",
-    "refine_jit",
-    "refine_inv_jit",
-    "refine_logdet_jit",
 ]

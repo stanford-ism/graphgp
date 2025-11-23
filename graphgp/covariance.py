@@ -71,20 +71,23 @@ def cov_lookup(r, cov_bins, cov_vals):
     If `r` is below the first bin, the first value is returned. But really the first bin should always be 0.0.
     If `r` is above the last bin, the last value is returned. Maybe the last value should be zero.
     """
-    # interpolate between bins
-    idx = jnp.searchsorted(cov_bins, r)
-    # return cov_vals[idx]
-    r0 = cov_bins[idx - 1]
-    r1 = cov_bins[idx]
-    c0 = cov_vals[idx - 1]
-    c1 = cov_vals[idx]
-    c = c0 + (c1 - c0) * (r - r0) / (r1 - r0)
+    return jnp.interp(r, cov_bins, cov_vals)
 
-    # handle edge cases
-    c = jnp.where(idx == 0, c1, c)
-    c = jnp.where(idx == len(cov_bins), c0, c)
-    c = jnp.where(r0 == r1, c0, c)
-    return c
+    # reproduce cuda implemenation exactly
+    # # interpolate between bins
+    # idx = jnp.searchsorted(cov_bins, r)
+    # # return cov_vals[idx]
+    # r0 = cov_bins[idx - 1]
+    # r1 = cov_bins[idx]
+    # c0 = cov_vals[idx - 1]
+    # c1 = cov_vals[idx]
+    # c = c0 + (c1 - c0) * (r - r0) / (r1 - r0)
+
+    # # handle edge cases
+    # c = jnp.where(idx == 0, c1, c)
+    # c = jnp.where(idx == len(cov_bins), c0, c)
+    # c = jnp.where(r0 == r1, c0, c)
+    # return c
 
 
 def _log_factorial(x):
