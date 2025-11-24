@@ -8,7 +8,6 @@ from .graph import (
 )
 from .covariance import compute_matern_covariance, compute_matern_covariance_discrete, compute_cov_matrix, make_cov_bins
 from .refine import (
-    
     generate,
     generate_inv,
     generate_logdet,
@@ -19,6 +18,7 @@ from .refine import (
     refine_inv,
     refine_logdet,
 )
+from . import extras
 
 __all__ = [
     "build_tree",
