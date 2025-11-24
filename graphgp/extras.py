@@ -61,13 +61,15 @@ def solve_cg(A, b, x0, *, steps, tol=None, M=None, restart=None):
     p0 = z0
     if tol is None:  # in this case vjp is supported
         x, r, p, z = lax.fori_loop(0, steps, loop_fun, (x0, r0, p0, z0))
+        return x, (steps, jnp.linalg.norm(r) / jnp.linalg.norm(b))
     else:
         i, x, r, p, z = lax.while_loop(cond_fun, body_fun, (0, x0, r0, p0, z0))
-    return x, (i, jnp.linalg.norm(r) / jnp.linalg.norm(b))
+        return x, (i, jnp.linalg.norm(r) / jnp.linalg.norm(b))
 
 
 def newton_cg(
     f,
+    metric,
     x0,
     *,
     newton_steps,
@@ -77,8 +79,7 @@ def newton_cg(
     line_search_steps=0,
 ):
     """
-    Minimize a nonlinear function, at each step using conjugate gradient to solve J^T J dx = -grad(f).
-    Note that this is using the Fisher metric to approximate the Hessian.
+    Minimize a nonlinear function, at each step using conjugate gradient to solve M dx = -grad(f).
     A very simply backtracking line search can be enabled by setting line_search_steps > 0.
     """
     value_and_grad = jax.value_and_grad(f)
@@ -93,12 +94,13 @@ def newton_cg(
     def step(carry):
         i, x, tol = carry
         value, grad = value_and_grad(x)
-        direction, _ = solve_cg(Partial(metric, f, x), -grad, jnp.zeros_like(x), steps=cg_steps, tol=cg_tol)
+        direction, _ = solve_cg(Partial(metric, x), -grad, jnp.zeros_like(x), steps=cg_steps, tol=cg_tol)
         if line_search_steps == 0:
             dx = direction
         else:
-            dx, _, _ = _simple_line_search(f, x, direction, f_x0=value, steps=line_search_steps)
-        tol = jnp.linalg.norm(dx) / jnp.linalg.norm(x)
+            dx, _, n_steps = _simple_line_search(f, x, direction, f_x0=value, steps=line_search_steps)
+            jax.debug.print("Line search took {}/{} steps", n_steps, line_search_steps)
+        tol = jnp.linalg.norm(grad)
         return i + 1, x + dx, tol
 
     i, x, tol = lax.while_loop(cond, step, (0, x0, jnp.inf))
@@ -116,7 +118,7 @@ def _simple_line_search(f, x0, direction, *, steps, f_x0=None, reduction=0.5):
     def step(carry):
         i, alpha, value = carry
         new_alpha = reduction * alpha
-        new_value, _ = f(x0 + new_alpha * direction)
+        new_value = f(x0 + new_alpha * direction)
         return i + 1, new_alpha, new_value
 
     value = f(x0 + direction)
@@ -128,17 +130,18 @@ def draw_linear_sample(transformation, x0, prior_noise, data_noise, *, cg_steps,
     """Sample from posterior using metric at x0 and linear condition M x = p + R d"""
 
     def A(x):
-        return x + metric(transformation, x0, x)
+        return x + _metric(transformation, x0, x)
 
-    b = prior_noise + pull(transformation, x0, data_noise)
-    sample, _ = solve_cg(A, b, x0=prior_noise, steps=cg_steps, tol=cg_tol)
-    return sample
+    b = prior_noise + _pull(transformation, x0, data_noise)
+    sample, (i, r) = solve_cg(A, b, x0=prior_noise, steps=cg_steps, tol=cg_tol)
+    return sample, (i, r)
 
 
 def draw_linear_samples(transformation, x0, prior_noise, data_noise, *, cg_steps, cg_tol=None):
-    return jax.vmap(Partial(draw_linear_sample, transformation, x0, cg_steps=cg_steps, cg_tol=cg_tol))(
+    samples, (i, r) = jax.vmap(Partial(draw_linear_sample, transformation, x0, cg_steps=cg_steps, cg_tol=cg_tol))(
         prior_noise, data_noise
     )
+    return samples, (i, r)
 
 
 def mgvi(
@@ -231,16 +234,16 @@ def flexible_covariance(cov_bins, logk, xi, *, variance, slope, fluctuations, d)
     return cov_vals
 
 
-def push(f, x0, x):
+def _push(f, x0, x):
     """Pushforward of transformation at x0 applied to x"""
     return jax.jvp(f, (x0,), (x,))[1]
 
 
-def pull(f, x0, d):
+def _pull(f, x0, d):
     """Pullback of transformation at x0 applied to d"""
     return jax.vjp(f, x0)[1](d)[0]
 
 
-def metric(f, x0, x):
+def _metric(f, x0, x):
     """Metric tensor at x0 applied to x"""
-    return pull(f, x0, push(f, x0, x))
+    return _pull(f, x0, _push(f, x0, x))
