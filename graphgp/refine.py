@@ -8,7 +8,6 @@ from jax import lax
 
 import numpy as np
 
-from .covariance import compute_cov_matrix
 from .graph import Graph
 
 try:
@@ -43,6 +42,8 @@ def generate(
     Returns:
         The generated values of shape ``(N,).``
     """
+    if len(xi) != len(graph.points):
+        raise ValueError("Length of xi must match number of points in graph.")
     n0 = len(graph.points) - len(graph.neighbors)
     if graph.indices is not None:
         xi = xi[graph.indices]
@@ -67,6 +68,8 @@ def generate_dense(points: Array, covariance: Tuple[Array, Array], xi: Array, ji
     Returns:
         The generated values of shape ``(N,).``
     """
+    if len(xi) != len(points):
+        raise ValueError("Length of xi must match number of points.")
     K = compute_cov_matrix(covariance, points, points)
     L = jnp.linalg.cholesky(K + jitter * jnp.eye(K.shape[0]))
     values = L @ xi
@@ -106,6 +109,10 @@ def refine(
 
     """
     n0 = len(points) - len(neighbors)  # should equal offsets[0]
+    if len(initial_values) != n0:
+        raise ValueError("Length of initial_values must match number of initial points.")
+    if len(xi) != len(points) - n0:
+        raise ValueError("Length of xi must match number of refined points.")
     if cuda:
         if not has_cuda:
             raise ImportError("CUDA extension not installed, cannot use cuda=True.")
@@ -163,6 +170,8 @@ def generate_inv(
     """
     Inverse of ``generate``. Ensure that the choice for ``reorder`` is the same. Recommended to JIT compile.
     """
+    if len(values) != len(graph.points):
+        raise ValueError("Length of values must match number of points in graph.")
     n0 = len(graph.points) - len(graph.neighbors)
     if graph.indices is not None:
         values = values[graph.indices]
@@ -178,6 +187,8 @@ def generate_dense_inv(points: Array, covariance: Tuple[Array, Array], values: A
     """
     Inverse of ``generate_dense``.
     """
+    if len(values) != len(points):
+        raise ValueError("Length of values must match number of points.")
     K = compute_cov_matrix(covariance, points, points)
     L = jnp.linalg.cholesky(K + jitter * jnp.eye(K.shape[0]))
     xi = jnp.linalg.solve(L, values)
@@ -197,6 +208,8 @@ def refine_inv(
     Inverse of ``refine``.
     """
     n0 = len(points) - len(neighbors)  # should equal offsets[0]
+    if len(values) != len(points):
+        raise ValueError("Length of values must match number of points.")
     if cuda:
         if not has_cuda:
             raise ImportError("CUDA extension not installed, cannot use cuda=True.")
@@ -270,3 +283,23 @@ def _conditional_mean_std(covariance, coarse_points, coarse_values, fine_point):
     mean = L[k, :k] @ jnp.linalg.solve(L[:k, :k], coarse_values)
     std = L[k, k]
     return mean, std
+
+def compute_cov_matrix(
+    covariance: Tuple[Array, Array], points_a: Array, points_b: Array
+) -> Array:
+    distances = jnp.expand_dims(points_a, -2) - jnp.expand_dims(points_b, -3)
+    distances = jnp.linalg.norm(distances, axis=-1)
+    if isinstance(covariance, Tuple) and isinstance(covariance[0], Array) and isinstance(covariance[1], Array):
+        cov_bins, cov_vals = covariance
+        return cov_lookup(distances, cov_bins, cov_vals)
+    else:
+        raise ValueError("Invalid covariance specification.")
+
+def cov_lookup(r, cov_bins, cov_vals):
+    """
+    Look up covariance in array of sampled `cov_vals` at radii `cov_bins` (equal-sized arrays).
+    If `r` is inside of bounds, a linearly interpolated value is returned.
+    If `r` is below the first bin, the first value is returned. But really the first bin should always be 0.0.
+    If `r` is above the last bin, the last value is returned. Maybe the last value should be zero.
+    """
+    return jnp.interp(r, cov_bins, cov_vals)

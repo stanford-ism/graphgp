@@ -20,7 +20,7 @@ def setup_graph():
 
     points = jr.normal(rng, (n_points, n_dim))
     graph = gp.build_graph(points, n0=n0, k=k)
-    covariance = gp.compute_matern_covariance_discrete(p=0, r_min=1e-4, r_max=10, n_bins=1000)
+    covariance = gp.matern_kernel(p=0, r_min=1e-4, r_max=10, n_bins=1000)
 
     yield graph, covariance, points
 
@@ -50,7 +50,7 @@ def test_approaches_dense():
     points = jr.normal(rng, (1000, 3))
     graph = gp.build_graph(points, n0=200, k=200)
     graph = gp.Graph(graph.points, graph.neighbors, graph.offsets)
-    covariance = gp.compute_matern_covariance_discrete(p=0, r_min=1e-4, r_max=10, n_bins=1000)
+    covariance = gp.matern_kernel(p=0, r_min=1e-4, r_max=10, n_bins=1000)
 
     xi = jr.normal(rng, (graph.points.shape[0],))
     true_values = jax.jit(gp.generate_dense)(graph.points, covariance, xi)
