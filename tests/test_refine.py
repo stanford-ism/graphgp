@@ -21,7 +21,7 @@ def setup_graph():
 
     points = jr.normal(rng, (n_points, n_dim))
     graph = gp.build_graph(points, n0=n0, k=k)
-    covariance = gp.extras.matern_kernel(p=0, r_min=1e-4, r_max=10, n_bins=1000)
+    covariance = gp.extras.matern_kernel(p=0, variance=1.0, cutoff=1.0, r_min=1e-4, r_max=10, n_bins=1000, jitter=1e-5)
 
     yield graph, covariance, points
 
@@ -33,13 +33,13 @@ def test_logdet_random(setup_graph):
         jax.jit(gp.generate_logdet)(graph, covariance),
         -600.36165088,
         rtol=1e-8,
-        text="Logdet does not match reference within rtol=1e-12.",
+        text="Logdet does not match reference within rtol=1e-8.",
     )
     check_equal(
         jax.jit(gp.generate_dense_logdet)(graph.points, covariance),
         -610.90538067,
         rtol=1e-8,
-        text="Dense logdet does not match reference within rtol=1e-12.",
+        text="Dense logdet does not match reference within rtol=1e-8.",
     )
 
 
@@ -67,7 +67,7 @@ def test_approaches_dense():
     points = jr.normal(rng, (1000, 3))
     graph = gp.build_graph(points, n0=200, k=200)
     graph = gp.Graph(graph.points, graph.neighbors, graph.offsets)
-    covariance = gp.extras.matern_kernel(p=0, r_min=1e-4, r_max=10, n_bins=1000)
+    covariance = gp.extras.matern_kernel(p=0, variance=1.0, cutoff=1.0, r_min=1e-4, r_max=10, n_bins=1000, jitter=1e-5)
 
     xi = jr.normal(rng, (graph.points.shape[0],))
     true_values = jax.jit(gp.generate_dense)(graph.points, covariance, xi)
