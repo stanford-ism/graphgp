@@ -51,3 +51,9 @@ Just as with a dense Cholesky decomposition, GraphGP can fail if the covariance 
 
 *What is the difference between the pure JAX and custom CUDA versions?* \
 The JAX version must store a $(k+1) \times (k+1)$ conditioning matrix for each point. The CUDA version generates these matrices on the fly and must only store the indices of $k$ neighbors for each point. We hence roughly expect a factor of $k$ better memory usage and runtime performance, depending on the exact setup.
+
+*How do I `GP.fit` my model in GraphGP?*
+GraphGP is not an inference package on its own and hence will not fit your GP model to data. But GraphGP includes all necessary
+ingredients to do GP inference and regression: A fast cholesky application, it's inverse, and log-determinant. Hence it is
+straightforward to combine it with JAX based optimization frameworks like [jaxopt](https://jaxopt.github.io/stable/) or
+[optax](https://optax.readthedocs.io/en/latest/). For advanced inference capabilities and Bayesian modeling we encourage users to take advantage of Nifty's inference tools. Here GraphGP can serve as a drop-in replaement for ICR. Stay tuned for full `ift.Model` integration of GraphGP!
