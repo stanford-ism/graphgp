@@ -6,9 +6,7 @@ from .graph import (
     compute_depths,
     order_by_depth,
 )
-from .covariance import compute_matern_covariance, compute_matern_covariance_discrete, compute_cov_matrix, make_cov_bins
 from .refine import (
-    
     generate,
     generate_inv,
     generate_logdet,
@@ -18,7 +16,9 @@ from .refine import (
     refine,
     refine_inv,
     refine_logdet,
+    compute_cov_matrix,
 )
+from . import extras
 
 __all__ = [
     "build_tree",
@@ -28,9 +28,7 @@ __all__ = [
     "build_graph",
     "compute_depths",
     "order_by_depth",
-    "compute_matern_covariance",
-    "compute_cov_matrix",
-    "make_cov_bins",
+    "matern_kernel",
     "generate",
     "generate_inv",
     "generate_logdet",
@@ -40,4 +38,6 @@ __all__ = [
     "refine",
     "refine_inv",
     "refine_logdet",
+    "compute_cov_matrix",
+    "extras",
 ]

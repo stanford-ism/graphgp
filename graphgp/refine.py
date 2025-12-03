@@ -1,4 +1,4 @@
-from typing import Callable, Tuple, Union
+from typing import Tuple
 
 import jax
 import jax.numpy as jnp
@@ -8,7 +8,6 @@ from jax import lax
 
 import numpy as np
 
-from .covariance import compute_cov_matrix
 from .graph import Graph
 
 try:
@@ -26,7 +25,6 @@ def generate(
     *,
     cuda: bool = False,
     fast_jit: bool = True,
-    jitter: float = 0.0,
 ) -> Array:
     """
     Generate a GP with dense Cholesky for the first layer followed by conditional refinement.
@@ -38,24 +36,27 @@ def generate(
         xi: Unit normal distributed parameters of shape ``(N,).``
         reorder: Whether to reorder parameters and values according to the original order of the points. Default is ``True``.
         cuda: Whether to use optional CUDA extension, if installed. Will still use CUDA GPU via JAX if available. Default is ``False`` but recommended if possible for performance.
-        fast_jit: Whether to use version of refinement that compiles faster, if cuda=False. Default is ``True`` but runtime performance and memory usage will suffer.
+        fast_jit: Whether to use version of refinement that compiles faster, if cuda=False. Default is ``True`` but runtime performance and memory usage will suffer slightly.
 
     Returns:
         The generated values of shape ``(N,).``
     """
+    if len(xi) != len(graph.points):
+        raise ValueError("Length of xi must match number of points in graph.")
     n0 = len(graph.points) - len(graph.neighbors)
     if graph.indices is not None:
         xi = xi[graph.indices]
-    initial_values = generate_dense(graph.points[:n0], covariance, xi[:n0], jitter=jitter)
+    initial_values = generate_dense(graph.points[:n0], covariance, xi[:n0])
     values = refine(
         graph.points, graph.neighbors, graph.offsets, covariance, initial_values, xi[n0:], cuda=cuda, fast_jit=fast_jit
     )
     if graph.indices is not None:
         values = jnp.empty_like(values).at[graph.indices].set(values, unique_indices=True)
+    values = jnp.where(jnp.any(jnp.isnan(values)), jnp.nan * values, values)
     return values
 
 
-def generate_dense(points: Array, covariance: Tuple[Array, Array], xi: Array, jitter: float = 0.0) -> Array:
+def generate_dense(points: Array, covariance: Tuple[Array, Array], xi: Array) -> Array:
     """
     Generate a GP with a dense Cholesky decomposition. Note that to compare with the GraphGP values,
     the points must be provided in tree order.
@@ -67,8 +68,10 @@ def generate_dense(points: Array, covariance: Tuple[Array, Array], xi: Array, ji
     Returns:
         The generated values of shape ``(N,).``
     """
+    if len(xi) != len(points):
+        raise ValueError("Length of xi must match number of points.")
     K = compute_cov_matrix(covariance, points, points)
-    L = jnp.linalg.cholesky(K + jitter * jnp.eye(K.shape[0]))
+    L = jnp.linalg.cholesky(K)
     values = L @ xi
     return values
 
@@ -106,6 +109,10 @@ def refine(
 
     """
     n0 = len(points) - len(neighbors)  # should equal offsets[0]
+    if len(initial_values) != n0:
+        raise ValueError("Length of initial_values must match number of initial points.")
+    if len(xi) != len(points) - n0:
+        raise ValueError("Length of xi must match number of refined points.")
     if cuda:
         if not has_cuda:
             raise ImportError("CUDA extension not installed, cannot use cuda=True.")
@@ -158,28 +165,31 @@ def generate_inv(
     values: Array,
     *,
     cuda: bool = False,
-    jitter: float = 0.0,
 ) -> Array:
     """
     Inverse of ``generate``. Ensure that the choice for ``reorder`` is the same. Recommended to JIT compile.
     """
+    if len(values) != len(graph.points):
+        raise ValueError("Length of values must match number of points in graph.")
     n0 = len(graph.points) - len(graph.neighbors)
     if graph.indices is not None:
         values = values[graph.indices]
     initial_values, xi = refine_inv(graph.points, graph.neighbors, graph.offsets, covariance, values, cuda=cuda)
-    initial_xi = generate_dense_inv(graph.points[:n0], covariance, initial_values, jitter=jitter)
+    initial_xi = generate_dense_inv(graph.points[:n0], covariance, initial_values)
     xi = jnp.concatenate([initial_xi, xi], axis=0)
     if graph.indices is not None:
         xi = jnp.empty_like(xi).at[graph.indices].set(xi, unique_indices=True)
     return xi
 
 
-def generate_dense_inv(points: Array, covariance: Tuple[Array, Array], values: Array, jitter: float = 0.0) -> Array:
+def generate_dense_inv(points: Array, covariance: Tuple[Array, Array], values: Array) -> Array:
     """
     Inverse of ``generate_dense``.
     """
+    if len(values) != len(points):
+        raise ValueError("Length of values must match number of points.")
     K = compute_cov_matrix(covariance, points, points)
-    L = jnp.linalg.cholesky(K + jitter * jnp.eye(K.shape[0]))
+    L = jnp.linalg.cholesky(K)
     xi = jnp.linalg.solve(L, values)
     return xi
 
@@ -197,6 +207,8 @@ def refine_inv(
     Inverse of ``refine``.
     """
     n0 = len(points) - len(neighbors)  # should equal offsets[0]
+    if len(values) != len(points):
+        raise ValueError("Length of values must match number of points.")
     if cuda:
         if not has_cuda:
             raise ImportError("CUDA extension not installed, cannot use cuda=True.")
@@ -218,7 +230,7 @@ def refine_inv(
     return initial_values, xi
 
 
-def generate_logdet(graph: Graph, covariance: Tuple[Array, Array], *, cuda: bool = False, jitter: float = 0.0) -> Array:
+def generate_logdet(graph: Graph, covariance: Tuple[Array, Array], *, cuda: bool = False) -> Array:
     """
     Log determinant of ``generate``.
     """
@@ -227,12 +239,12 @@ def generate_logdet(graph: Graph, covariance: Tuple[Array, Array], *, cuda: bool
     return dense_logdet + refine_logdet(graph.points, graph.neighbors, graph.offsets, covariance, cuda=cuda)
 
 
-def generate_dense_logdet(points: Array, covariance: Tuple[Array, Array], jitter: float = 0.0) -> Array:
+def generate_dense_logdet(points: Array, covariance: Tuple[Array, Array]) -> Array:
     """
     Log determinant of ``generate_dense``.
     """
     K = compute_cov_matrix(covariance, points, points)
-    return jnp.linalg.slogdet(K + jitter * jnp.eye(K.shape[0]))[1] / 2
+    return jnp.linalg.slogdet(K)[1] / 2
 
 
 def refine_logdet(
@@ -270,3 +282,23 @@ def _conditional_mean_std(covariance, coarse_points, coarse_values, fine_point):
     mean = L[k, :k] @ jnp.linalg.solve(L[:k, :k], coarse_values)
     std = L[k, k]
     return mean, std
+
+
+def compute_cov_matrix(covariance: Tuple[Array, Array], points_a: Array, points_b: Array) -> Array:
+    distances = jnp.expand_dims(points_a, -2) - jnp.expand_dims(points_b, -3)
+    distances = jnp.linalg.norm(distances, axis=-1)
+    if isinstance(covariance, Tuple) and isinstance(covariance[0], Array) and isinstance(covariance[1], Array):
+        cov_bins, cov_vals = covariance
+        return cov_lookup(distances, cov_bins, cov_vals)
+    else:
+        raise ValueError("Invalid covariance specification.")
+
+
+def cov_lookup(r, cov_bins, cov_vals):
+    """
+    Look up covariance in array of sampled `cov_vals` at radii `cov_bins` (equal-sized arrays).
+    If `r` is inside of bounds, a linearly interpolated value is returned.
+    If `r` is below the first bin, the first value is returned. But really the first bin should always be 0.0.
+    If `r` is above the last bin, the last value is returned. Maybe the last value should be zero.
+    """
+    return jnp.interp(r, cov_bins, cov_vals)
