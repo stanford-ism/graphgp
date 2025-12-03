@@ -1,13 +1,11 @@
 from dataclasses import dataclass, field
-from typing import Callable, Tuple, Any, Union
+from typing import Tuple
 
 import jax
 import jax.numpy as jnp
 from jax.tree_util import Partial, register_dataclass
 from jax import Array
-from jax import lax
 
-import numpy as np
 
 from .tree import build_tree, query_preceding_neighbors
 

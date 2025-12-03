@@ -18,7 +18,6 @@ from .refine import (
     refine_logdet,
     compute_cov_matrix,
 )
-from .extras import matern_kernel
 from . import extras
 
 __all__ = [
@@ -40,4 +39,5 @@ __all__ = [
     "refine_inv",
     "refine_logdet",
     "compute_cov_matrix",
+    "extras",
 ]

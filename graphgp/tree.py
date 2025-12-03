@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Any, Callable, Tuple
+from typing import Tuple
 
 import jax
 import jax.numpy as jnp
@@ -9,6 +9,7 @@ from jax import Array
 
 try:
     import graphgp_cuda
+
     has_cuda = True
 except ImportError:
     has_cuda = False
@@ -37,9 +38,7 @@ def build_tree(points: Array, cuda: bool = False) -> Tuple[Array, Array, Array]:
     return _build_tree(points)
 
 
-def query_preceding_neighbors(
-    points: Array, split_dims: Array, *, n0: int, k: int, cuda: bool = False
-) -> Array:
+def query_preceding_neighbors(points: Array, split_dims: Array, *, n0: int, k: int, cuda: bool = False) -> Array:
     """
     Query the k-nearest neighbors of each point among the preceding points, starting from point n0.
 
@@ -101,7 +100,7 @@ def _single_query_neighbors(points, split_dims, query_index, max_index, *, k):
         points, split_dims, query_index, max_index, update_func, (neighbors, square_distances), jnp.asarray(jnp.inf)
     )
 
-    distances = jnp.linalg.norm(points[neighbors] - points[query_index], axis=-1) 
+    distances = jnp.linalg.norm(points[neighbors] - points[query_index], axis=-1)
     distances, neighbors = lax.sort((distances, neighbors), dimension=0, num_keys=2)
     return neighbors
 
@@ -207,6 +206,7 @@ def _compute_parent(current):
     parent = jnp.where(current < n_above + n_parent_level, current - n_parent_level, current - 2 * n_parent_level)
     parent = jnp.where(current == 0, -1, parent)  # root has no parent
     return parent
+
 
 def _update_nodes(nodes, index, level):
     # Calculate numbers for the level
