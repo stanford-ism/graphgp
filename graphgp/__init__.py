@@ -28,7 +28,6 @@ __all__ = [
     "build_graph",
     "compute_depths",
     "order_by_depth",
-    "matern_kernel",
     "generate",
     "generate_inv",
     "generate_logdet",
