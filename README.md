@@ -31,7 +31,7 @@ To install, use pip. The only dependency is JAX.
 
 ```python -m pip install graphgp```
 
-For large problems, consider installing the custom CUDA extension as shown below, which will require CMake and the CUDA compiler (nvcc) installed on your system. It will take a moment to build and there may be rough edges, but memory and runtime requirements will be substantially improved. Please let us know if you encounter issues!
+The pure-JAX version can already take advantage of GPU/TPU acceleration, but for maximum performance on Nvidia GPUs we also provide a custom CUDA extension. Install as shown below and then use the `cuda=True` argument in any applicable function calls. You will need CMake and the CUDA compiler (nvcc) installed on your system. Derivatives of white noise and kernel parameters should all be supported via custom JAX primitives, but there may be some rough edges. Please let us know if you encounter issues!
 
 ```python -m pip install graphgp[cuda]```
 

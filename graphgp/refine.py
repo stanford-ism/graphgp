@@ -52,7 +52,7 @@ def generate(
     )
     if graph.indices is not None:
         values = jnp.empty_like(values).at[graph.indices].set(values, unique_indices=True)
-    values = jnp.where(jnp.any(jnp.isnan(values)), jnp.nan * values, values)
+    values = jnp.where(jnp.any(jnp.isnan(values)), jnp.full_like(values, jnp.nan), values)
     return values
 
 
@@ -179,6 +179,7 @@ def generate_inv(
     xi = jnp.concatenate([initial_xi, xi], axis=0)
     if graph.indices is not None:
         xi = jnp.empty_like(xi).at[graph.indices].set(xi, unique_indices=True)
+    xi = jnp.where(jnp.any(jnp.isnan(xi)), jnp.full_like(xi, jnp.nan), xi)
     return xi
 
 

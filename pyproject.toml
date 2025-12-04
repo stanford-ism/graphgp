@@ -1,7 +1,11 @@
 [project]
 name = "graphgp"
 dynamic = ["version"]
-description = "Add your description here"
+description = "Scalable Gaussian processes with nearest neighbor graphs."
+authors = [
+    {name="Benjamin Dodge", email="bendodge@stanford.edu"},
+    {name="Philipp Frank", email="phfrank@stanford.edu"}
+]
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -23,7 +27,7 @@ dev = [
 ]
 
 [project.urls]
-Source = "https://github.com/dodgebc/graphgp"
+Source = "https://github.com/stanford-ism/graphgp"
 
 [build-system]
 requires = ["hatchling", "hatch-vcs"]
@@ -36,10 +40,3 @@ source = "vcs"
 line-length = 120
 exclude = ["*.ipynb"]
 lint.ignore = ["E402"]
-
-[dependency-groups]
-dev = [
-    "cmasher>=1.9.2",
-    "cmocean>=4.0.3",
-    "pytest>=8.4.1",
-]
