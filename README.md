@@ -7,7 +7,7 @@
 ✅ uses JAX, with a faster custom CUDA extension that supports derivatives \
 ✅ has an exact inverse and determinant available
 
-The underlying theory and implementation is described in two upcoming papers. It is an evolution of Iterative Charted Refinement [[1](https://arxiv.org/abs/2206.10634)], which was first implemented in the [NIFTy](https://ift.pages.mpcdf.de/nifty/) package. The tree algorithms are inspired by two GPU-friendly approaches [[2](https://arxiv.org/abs/2211.00120), [3](https://arxiv.org/abs/2210.12859)] originally implemented in the [cudaKDTree](https://github.com/ingowald/cudaKDTree) library.
+The underlying theory and implementation is described in two upcoming papers. It is an evolution of Iterative Charted Refinement [[1](https://arxiv.org/abs/2206.10634)], which was first implemented in the [NIFTy](https://ift.pages.mpcdf.de/nifty/) package. The tree algorithms are based on two GPU-friendly approaches [[2](https://arxiv.org/abs/2211.00120), [3](https://arxiv.org/abs/2210.12859)] originally implemented in the [cudaKDTree](https://github.com/ingowald/cudaKDTree) library.
 
 This software was written by [Benjamin Dodge](https://github.com/dodgebc) and [Philipp Frank](https://ph-frank.de) for applications in astrophysics, but we hope others across the physical sciences will find it useful! We thank [Susan Clark](https://clarkgroup.stanford.edu/) for guidance and support in developing the package, and are grateful for feedback from other members of the ISM group at Stanford. Please do not hesitate to open an issue or discussion for questions or problems :)
 
