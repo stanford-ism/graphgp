@@ -13,6 +13,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies] 
+cuda = [
+    "graphgp-cuda"
+]
 dev = [
     "optax",
     "jaxkd[cuda]",
