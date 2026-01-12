@@ -52,7 +52,7 @@ def generate(
     )
     if graph.indices is not None:
         values = jnp.empty_like(values).at[graph.indices].set(values, unique_indices=True)
-    values = jnp.where(jnp.any(jnp.isnan(values)), jnp.full_like(values, jnp.nan), values)
+    # values = jnp.where(jnp.any(jnp.isnan(values)), jnp.full_like(values, jnp.nan), values)
     return values
 
 
