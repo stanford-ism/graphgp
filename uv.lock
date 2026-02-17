@@ -458,13 +458,13 @@ wheels = [
 name = "graphgp"
 source = { editable = "." }
 dependencies = [
-    { name = "graphgp-cuda" },
     { name = "jax" },
 ]
 
 [package.optional-dependencies]
 cuda = [
     { name = "graphgp-cuda" },
+    { name = "jax", extra = ["cuda12"] },
 ]
 dev = [
     { name = "ipywidgets" },
@@ -481,11 +481,11 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "graphgp-cuda", directory = "../graphgp-cuda" },
-    { name = "graphgp-cuda", marker = "extra == 'cuda'", directory = "../graphgp-cuda" },
+    { name = "graphgp-cuda", marker = "extra == 'cuda'" },
     { name = "ipywidgets", marker = "extra == 'dev'", specifier = ">=8.1.7" },
     { name = "jax" },
-    { name = "jax", extras = ["cuda12"], marker = "extra == 'dev'", specifier = "==0.8.0" },
+    { name = "jax", extras = ["cuda12"], marker = "extra == 'cuda'" },
+    { name = "jax", extras = ["cuda12"], marker = "extra == 'dev'" },
     { name = "jaxkd", extras = ["cuda"], marker = "extra == 'dev'" },
     { name = "jupyterlab", marker = "extra == 'dev'", specifier = ">=4.4.3" },
     { name = "matplotlib", marker = "extra == 'dev'", specifier = ">=3.10.3" },
@@ -500,19 +500,11 @@ provides-extras = ["cuda", "dev"]
 [[package]]
 name = "graphgp-cuda"
 version = "0.0.2"
-source = { directory = "../graphgp-cuda" }
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "jax" },
 ]
-
-[package.metadata]
-requires-dist = [
-    { name = "jax" },
-    { name = "jax", extras = ["cuda12"], marker = "extra == 'dev'", specifier = "==0.8.0" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3.5" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.11.11" },
-]
-provides-extras = ["dev"]
+sdist = { url = "https://files.pythonhosted.org/packages/66/4c/11978d2021f69b3da7468104bd74a4976e2a7b3ec9c548dd1a32e3446f44/graphgp_cuda-0.0.2.tar.gz", hash = "sha256:803a1d6a003eebaaa129e9681aabd8c83cccc62c7fe4ecf353e88b23cbe89502", size = 27054, upload-time = "2026-02-17T06:13:40.645Z" }
 
 [[package]]
 name = "h11"

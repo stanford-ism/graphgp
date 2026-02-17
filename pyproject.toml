@@ -14,14 +14,14 @@ dependencies = [
 
 [project.optional-dependencies] 
 cuda = [
-    "jax[cuda12]"
-    "graphgp-cuda"
+    "jax[cuda12]",
+    "graphgp-cuda",
 ]
 dev = [
     "optax",
     "jaxkd[cuda]",
     "ipywidgets>=8.1.7",
-    "jax[cuda12]"
+    "jax[cuda12]",
     "jupyterlab>=4.4.3",
     "matplotlib>=3.10.3",
     "pytest>=8.3.5",
@@ -44,6 +44,3 @@ source = "vcs"
 line-length = 120
 exclude = ["*.ipynb"]
 lint.ignore = ["E402"]
-
-[tool.uv.sources]
-graphgp-cuda = { path = "../graphgp-cuda" }
