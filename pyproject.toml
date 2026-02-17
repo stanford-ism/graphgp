@@ -7,20 +7,21 @@ authors = [
     {name="Philipp Frank", email="phfrank@stanford.edu"}
 ]
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
-    "jax"
+    "jax",
 ]
 
 [project.optional-dependencies] 
 cuda = [
+    "jax[cuda12]"
     "graphgp-cuda"
 ]
 dev = [
     "optax",
     "jaxkd[cuda]",
     "ipywidgets>=8.1.7",
-    "jax[cuda12]==0.8.0",
+    "jax[cuda12]"
     "jupyterlab>=4.4.3",
     "matplotlib>=3.10.3",
     "pytest>=8.3.5",
@@ -43,3 +44,6 @@ source = "vcs"
 line-length = 120
 exclude = ["*.ipynb"]
 lint.ignore = ["E402"]
+
+[tool.uv.sources]
+graphgp-cuda = { path = "../graphgp-cuda" }
