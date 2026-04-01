@@ -9,6 +9,7 @@ authors = [
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "graphgp-cuda>=0.0.2",
     "jax",
 ]
 
@@ -44,3 +45,11 @@ source = "vcs"
 line-length = 120
 exclude = ["*.ipynb"]
 lint.ignore = ["E402"]
+
+[tool.uv.sources]
+graphgp = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "graphgp",
+]

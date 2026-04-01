@@ -458,6 +458,7 @@ wheels = [
 name = "graphgp"
 source = { editable = "." }
 dependencies = [
+    { name = "graphgp-cuda" },
     { name = "jax" },
 ]
 
@@ -479,8 +480,14 @@ dev = [
     { name = "tqdm" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "graphgp" },
+]
+
 [package.metadata]
 requires-dist = [
+    { name = "graphgp-cuda", specifier = ">=0.0.2" },
     { name = "graphgp-cuda", marker = "extra == 'cuda'" },
     { name = "ipywidgets", marker = "extra == 'dev'", specifier = ">=8.1.7" },
     { name = "jax" },
@@ -496,6 +503,9 @@ requires-dist = [
     { name = "tqdm", marker = "extra == 'dev'", specifier = ">=4.67.1" },
 ]
 provides-extras = ["cuda", "dev"]
+
+[package.metadata.requires-dev]
+dev = [{ name = "graphgp", editable = "." }]
 
 [[package]]
 name = "graphgp-cuda"
