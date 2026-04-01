@@ -1,0 +1,56 @@
+{
+  "defaults": {
+    "covariance": {
+      "matern_p": 0,
+      "discrete_cov": true,
+      "r_min": 1e-05,
+      "r_max": 10.0,
+      "n_bins": 1000
+    },
+    "distribution": {
+      "type": "gaussian"
+    },
+    "d": 3,
+    "timing_runs": 5,
+    "cuda": true,
+    "seed": 137
+  },
+  "runs": [
+    {
+      "n": 100000000,
+      "n0": 1000,
+      "k": 8,
+      "graph": {
+        "strict": true,
+        "serial_depth": false
+      }
+    },
+      {
+      "n": 100000000,
+      "n0": 1000,
+      "k": 8,
+      "graph": {
+        "strict": true,
+        "serial_depth": false
+      }
+    },
+    {
+      "n": 100000000,
+      "n0": 1000,
+      "k": 8,
+      "graph": {
+        "strict": true,
+        "serial_depth": true
+      }
+    },
+        {
+      "n": 100000000,
+      "n0": 1000,
+      "k": 8,
+      "graph": {
+        "strict": true,
+        "serial_depth": true
+      }
+    }
+  ]
+}
