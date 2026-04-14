@@ -1,0 +1,137 @@
+{
+  "defaults": {
+    "covariance": {
+      "matern_p": 0,
+      "variance": 1.0,
+      "cutoff": 1.0,
+      "r_min": 1e-05,
+      "r_max": 10.0,
+      "n_bins": 1000
+    },
+    "distribution": {
+      "type": "gaussian"
+    },
+    "graph": {
+      "strict": true,
+      "serial_depth": false,
+      "fuse": true
+    },
+    "function": "forward",
+    "timing_runs": 5,
+    "seed": 137
+  },
+  "runs": [
+    {
+      "n": 10000,
+      "n0": 1000,
+      "d": 3,
+      "k": 30,
+      "cuda": true,
+      "function": "forward"
+    },
+    {
+      "n": 10000,
+      "n0": 1000,
+      "d": 3,
+      "k": 30,
+      "cuda": false,
+      "function": "forward"
+    },
+    {
+      "n": 30000,
+      "n0": 1000,
+      "d": 3,
+      "k": 30,
+      "cuda": true,
+      "function": "forward"
+    },
+    {
+      "n": 30000,
+      "n0": 1000,
+      "d": 3,
+      "k": 30,
+      "cuda": false,
+      "function": "forward"
+    },
+    {
+      "n": 100000,
+      "n0": 1000,
+      "d": 3,
+      "k": 30,
+      "cuda": true,
+      "function": "forward"
+    },
+    {
+      "n": 100000,
+      "n0": 1000,
+      "d": 3,
+      "k": 30,
+      "cuda": false,
+      "function": "forward"
+    },
+    {
+      "n": 300000,
+      "n0": 1000,
+      "d": 3,
+      "k": 30,
+      "cuda": true,
+      "function": "forward"
+    },
+    {
+      "n": 300000,
+      "n0": 1000,
+      "d": 3,
+      "k": 30,
+      "cuda": false,
+      "function": "forward"
+    },
+    {
+      "n": 1000000,
+      "n0": 1000,
+      "d": 3,
+      "k": 30,
+      "cuda": true,
+      "function": "forward"
+    },
+    {
+      "n": 1000000,
+      "n0": 1000,
+      "d": 3,
+      "k": 30,
+      "cuda": false,
+      "function": "forward"
+    },
+    {
+      "n": 3000000,
+      "n0": 1000,
+      "d": 3,
+      "k": 30,
+      "cuda": true,
+      "function": "forward"
+    },
+    {
+      "n": 3000000,
+      "n0": 1000,
+      "d": 3,
+      "k": 30,
+      "cuda": false,
+      "function": "forward"
+    },
+    {
+      "n": 10000000,
+      "n0": 1000,
+      "d": 3,
+      "k": 30,
+      "cuda": true,
+      "function": "forward"
+    },
+    {
+      "n": 10000000,
+      "n0": 1000,
+      "d": 3,
+      "k": 30,
+      "cuda": false,
+      "function": "forward"
+    }
+  ]
+}

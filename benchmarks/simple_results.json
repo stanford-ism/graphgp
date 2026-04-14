@@ -1,0 +1,121 @@
+{
+  "timestamp": "2026-04-14T12:33:36.936540",
+  "config": {
+    "n_values": [
+      1000000,
+      3000000,
+      10000000
+    ],
+    "k_values": [
+      4,
+      16,
+      64
+    ],
+    "cuda_values": [
+      true,
+      false
+    ],
+    "n0": 1000,
+    "d": 3,
+    "seed": 137,
+    "timing_runs": 3,
+    "covariance": {
+      "p": 0,
+      "variance": 1.0,
+      "cutoff": 1.0,
+      "r_min": 1e-05,
+      "r_max": 10.0,
+      "n_bins": 1000
+    }
+  },
+  "results": [
+    {
+      "n": 1000000,
+      "k": 4,
+      "cuda": true,
+      "status": "ok",
+      "graph_build_time_s": 0.3116633430472575,
+      "graph_depth": 42,
+      "forward_mean_s": 0.00876502263902997,
+      "forward_std_s": 0.00015114567358377124,
+      "forward_memory_mb": 57.214088439941406
+    },
+    {
+      "n": 1000000,
+      "k": 16,
+      "cuda": true,
+      "status": "ok",
+      "graph_build_time_s": 0.550483177008573,
+      "graph_depth": 137,
+      "forward_mean_s": 0.06694834834585588,
+      "forward_std_s": 0.0009022249146289971,
+      "forward_memory_mb": 102.9446792602539
+    },
+    {
+      "n": 1000000,
+      "k": 64,
+      "cuda": true,
+      "status": "ok",
+      "graph_build_time_s": 4.332270401006099,
+      "graph_depth": 517,
+      "forward_mean_s": 2.414513726679919,
+      "forward_std_s": 0.004442816480585627,
+      "forward_memory_mb": 285.8670425415039
+    },
+    {
+      "n": 3000000,
+      "k": 4,
+      "cuda": true,
+      "status": "ok",
+      "graph_build_time_s": 2.3408250140491873,
+      "graph_depth": 48,
+      "forward_mean_s": 0.013532577004904548,
+      "forward_std_s": 0.0005306738869679206,
+      "forward_memory_mb": 125.8786392211914
+    },
+    {
+      "n": 3000000,
+      "k": 16,
+      "cuda": true,
+      "status": "ok",
+      "graph_build_time_s": 3.0647689910256304,
+      "graph_depth": 160,
+      "forward_mean_s": 0.13747997865236053,
+      "forward_std_s": 0.0013476157763849272,
+      "forward_memory_mb": 263.1619644165039
+    },
+    {
+      "n": 3000000,
+      "k": 64,
+      "cuda": true,
+      "status": "ok",
+      "graph_build_time_s": 15.205942245025653,
+      "graph_depth": 608,
+      "forward_mean_s": 5.547824171022512,
+      "forward_std_s": 0.010574785559982744,
+      "forward_memory_mb": 812.2952651977539
+    },
+    {
+      "n": 10000000,
+      "k": 4,
+      "cuda": true,
+      "status": "ok",
+      "graph_build_time_s": 13.184086624009069,
+      "graph_depth": 58,
+      "forward_mean_s": 0.04496923768116782,
+      "forward_std_s": 0.0006287729024671986,
+      "forward_memory_mb": 381.4633560180664
+    },
+    {
+      "n": 10000000,
+      "k": 16,
+      "cuda": true,
+      "status": "ok",
+      "graph_build_time_s": 17.607051476021297,
+      "graph_depth": 183,
+      "forward_mean_s": 0.4104078873448695,
+      "forward_std_s": 0.004554431871242134,
+      "forward_memory_mb": 839.1812515258789
+    }
+  ]
+}
