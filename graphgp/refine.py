@@ -163,7 +163,7 @@ def refine(
             # Precompute matrix factorizations for all points
             coarse_points = points[neighbors]
             joint_points = jnp.concatenate([coarse_points, points[n0:, None]], axis=1)
-            K = jax.vmap(my_compute_cov_matrix, in_axes=(None, 0, 0))(covariance, joint_points, joint_points)
+            K = jax.vmap(compute_cov_matrix, in_axes=(None, 0, 0))(covariance, joint_points, joint_points)
             L = jnp.linalg.cholesky(K)
             mean_vec = jnp.linalg.solve(L[:, :k, :k].transpose(0, 2, 1), L[:, k, :k][..., None]).squeeze(-1)
             noise = L[:, k, k] * xi
