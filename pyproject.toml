@@ -7,7 +7,7 @@ authors = [
     {name="Philipp Frank", email="phfrank@stanford.edu"}
 ]
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
     "jax"
 ]
@@ -27,6 +27,7 @@ dev = [
     "ruff>=0.11.11",
     "tqdm>=4.67.1",
     "scipy",
+    "graphgp-cuda"
 ]
 
 [project.urls]
