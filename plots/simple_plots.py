@@ -14,7 +14,7 @@ k_values = sorted({r["k"] for r in results})
 cmap_cuda = plt.get_cmap("Blues")
 cmap_jax  = plt.get_cmap("Oranges")
 
-fig, axes = plt.subplots(1, 3, figsize=(9,4), dpi=150)
+fig, axes = plt.subplots(1, 3, figsize=(10,5), dpi=300)
 
 for i, k in enumerate(k_values):
     for cuda, cmap in [(True, cmap_cuda), (False, cmap_jax)]:
@@ -55,7 +55,7 @@ axes[0].plot([], [], "-", color=cmap_cuda(0.6), label="CUDA")
 axes[0].legend(loc="lower right", fontsize=9)
 
 plt.tight_layout()
-plt.savefig("../../Overleaf/graphgp-pai26/figures/benchmark.pdf", dpi=300)
+# plt.savefig("../../Overleaf/graphgp-pai26/figures/benchmark.pdf", dpi=300)
 plt.show()
 
 # %%
