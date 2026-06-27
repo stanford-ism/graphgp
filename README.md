@@ -9,6 +9,8 @@
 
 GraphGP uses the [Vecchia approximation](https://en.wikipedia.org/wiki/Vecchia_approximation) with a custom ordering and efficient implementation. It is an evolution of Iterative Charted Refinement [[1](https://arxiv.org/abs/2206.10634)], which was first implemented in the [NIFTy](https://ift.pages.mpcdf.de/nifty/) package. The tree algorithms are based on two GPU-friendly approaches [[2](https://arxiv.org/abs/2211.00120), [3](https://arxiv.org/abs/2210.12859)] originally implemented in the [cudaKDTree](https://github.com/ingowald/cudaKDTree) library.
 
+**More details can be found in the paper: [2606.11402](https://arxiv.org/abs/2606.11402)**
+
 This software was written by [Benjamin Dodge](https://github.com/dodgebc) and [Philipp Frank](https://ph-frank.de) for applications in astrophysics, but we hope others across the physical sciences will find it useful! We thank [Susan Clark](https://clarkgroup.stanford.edu/) for guidance and support in developing the package, and are grateful for feedback from other members of the ISM group at Stanford. Please do not hesitate to open an issue or discussion for questions or problems :)
 
 ## Usage
@@ -54,3 +56,18 @@ The JAX version must store a $(k+1) \times (k+1)$ conditioning matrix for each p
 
 *How do I `gp.fit` my model in GraphGP?* \
 GraphGP is not an inference package on its own and hence will not fit your GP model to data. But GraphGP includes all necessary ingredients to do GP inference and regression: a fast Cholesky application, its inverse, and log-determinant. Hence it is straightforward to combine it with JAX-based optimization frameworks like [jaxopt](https://jaxopt.github.io/stable/) or [optax](https://optax.readthedocs.io/en/latest/). For advanced inference capabilities and Bayesian modeling we encourage users to take advantage of the inference tools available in [NIFTy](https://ift.pages.mpcdf.de/nifty/). Here GraphGP can serve as a drop-in replacement for ICR. Stay tuned for full `ift.Model` integration of GraphGP!
+
+## Citation
+
+If you use GraphGP in your research, please cite the accompanying paper:
+
+```bibtex
+@inproceedings{dodge2026graphgp,
+  title        = {{GraphGP}: Scalable {Gaussian} Processes with {Vecchia}'s Approximation},
+  author       = {Dodge, Benjamin and Frank, Philipp and Clark, Susan E.},
+  booktitle    = {Proceedings of the Conference on Physics and {AI} at {Stanford} University},
+  year         = {2026},
+  doi          = {10.48550/arXiv.2606.11402},
+  url          = {https://arxiv.org/abs/2606.11402},
+}
+```
