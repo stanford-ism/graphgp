@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
 from typing import Tuple
+import numpy as np
 
 import jax
 import jax.numpy as jnp
@@ -70,7 +71,15 @@ def check_graph(graph: Graph):
     assert jnp.all(max_neighbors < offsets[offsets_index]), "Neighbors must not be in the same batch"
 
 
-def build_graph(points: Array, *, n0: int, k: int, cuda: bool = False) -> Graph:
+def build_graph(
+    points: Array,
+    *,
+    n0: int,
+    k: int,
+    cuda: bool = False,
+    periodic: bool = False,
+    boxsize: Array | float | Tuple[float, ...] | None = None,
+) -> Graph:
     """
     Build a graph where each point depends on its ``k`` nearest neighbors which precede it in a k-d tree ordering (the original point order does not matter).
 
@@ -78,7 +87,9 @@ def build_graph(points: Array, *, n0: int, k: int, cuda: bool = False) -> Graph:
         points: The input points of shape ``(N, d)``.
         n0: The number of initial points.
         k: The number of neighbors to include.
-        cuda: Whether to use optional CUDA extension, if installed. Will still use CUDA GPU via JAX if available. Default is ``False`` but recommended if possible for performance.
+        cuda: Whether to use optional CUDA extension, if installed.
+        periodic: If ``True``, choose nearest predecessors with the periodic minimum-image metric.
+        boxsize: Side lengths of the periodic box. Required when ``periodic=True``.
 
     Returns:
         A ``Graph`` dataclass containing ``points``, ``neighbors``, ``offsets``, and ``indices``.
@@ -86,15 +97,79 @@ def build_graph(points: Array, *, n0: int, k: int, cuda: bool = False) -> Graph:
     if cuda:
         if not has_cuda:
             raise ImportError("CUDA extension not installed, cannot use cuda=True.")
+        if periodic:
+            raise NotImplementedError("Periodic nearest-neighbor queries are currently only implemented on the CPU path.")
         points, indices, neighbors, depths = graphgp_cuda.build_graph(points, n0=n0, k=k)
     else:
         points, split_dims, indices = build_tree(points)
-        neighbors = query_preceding_neighbors(points, split_dims, n0=n0, k=k)
+        neighbors = query_preceding_neighbors(
+            points,
+            split_dims,
+            n0=n0,
+            k=k,
+            periodic=periodic,
+            boxsize=boxsize,
+        )
         depths = compute_depths(neighbors, n0=n0)
         points, indices, neighbors, depths = order_by_depth(points, indices, neighbors, depths)
     offsets = jnp.searchsorted(depths, jnp.arange(1, jnp.max(depths) + 2))
     offsets = tuple(int(x) for x in offsets)
-    # TODO: neighbors[:, ::-1] from far to close feels more stable but not sure if it matters
+    return Graph(points, neighbors, offsets, indices)
+
+
+def build_interpolation_graph(
+    source_points: Array,
+    target_points: Array,
+    *,
+    k: int,
+    periodic: bool = False,
+    boxsize: Array | float | Tuple[float, ...] | None = None,
+) -> Graph:
+    """Build a dependency graph for conditional refinement from known source points to new target points."""
+    source_points = jnp.asarray(source_points)
+    target_points = jnp.asarray(target_points)
+    if source_points.ndim != 2 or target_points.ndim != 2:
+        raise ValueError("source_points and target_points must have shape (N, d).")
+    if source_points.shape[1] != target_points.shape[1]:
+        raise ValueError("source_points and target_points must have the same dimensionality.")
+    if k <= 0 or len(source_points) < k:
+        raise ValueError("Need at least k source points and k>0.")
+
+    source_np = np.asarray(source_points)
+    target_tree, _, target_indices = build_tree(target_points)
+    target_np = np.asarray(target_tree)
+    n0 = len(source_np)
+    nt = len(target_np)
+    points_np = np.concatenate([source_np, target_np], axis=0)
+    indices_np = np.concatenate([np.arange(n0, dtype=np.int32), n0 + np.asarray(target_indices, dtype=np.int32)], axis=0)
+    neighbors_np = np.empty((nt, k), dtype=np.int32)
+
+    if periodic:
+        if boxsize is None:
+            raise ValueError("boxsize must be provided when periodic=True.")
+        box = np.asarray(boxsize, dtype=np.float64)
+        if box.ndim == 0:
+            box = np.full(points_np.shape[1], float(box), dtype=np.float64)
+    else:
+        box = None
+
+    for i in range(nt):
+        idx = n0 + i
+        deltas = points_np[:idx] - points_np[idx]
+        if periodic:
+            deltas = deltas - box[None, :] * np.round(deltas / box[None, :])
+        dist2 = np.einsum('ij,ij->i', deltas, deltas)
+        nbr = np.argpartition(dist2, kth=k-1)[:k]
+        nbr = nbr[np.argsort(dist2[nbr])]
+        neighbors_np[i] = nbr
+
+    points = jnp.asarray(points_np)
+    indices = jnp.asarray(indices_np)
+    neighbors = jnp.asarray(neighbors_np)
+    depths = compute_depths(neighbors, n0=n0)
+    points, indices, neighbors, depths = order_by_depth(points, indices, neighbors, depths)
+    offsets = jnp.searchsorted(depths, jnp.arange(1, jnp.max(depths) + 2))
+    offsets = tuple(int(x) for x in offsets)
     return Graph(points, neighbors, offsets, indices)
 
 

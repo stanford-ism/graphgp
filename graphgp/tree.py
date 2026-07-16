@@ -1,6 +1,7 @@
 from __future__ import annotations
 from typing import Tuple
 
+import numpy as np
 import jax
 import jax.numpy as jnp
 from jax import lax
@@ -13,6 +14,14 @@ try:
     has_cuda = True
 except ImportError:
     has_cuda = False
+
+try:
+    from scipy.spatial import cKDTree
+
+    has_scipy = True
+except ImportError:
+    cKDTree = None
+    has_scipy = False
 
 
 @Partial(jax.jit, static_argnames=("cuda",))
@@ -38,29 +47,86 @@ def build_tree(points: Array, cuda: bool = False) -> Tuple[Array, Array, Array]:
     return _build_tree(points)
 
 
-def query_preceding_neighbors(points: Array, split_dims: Array, *, n0: int, k: int, cuda: bool = False) -> Array:
+def query_preceding_neighbors(
+    points: Array,
+    split_dims: Array,
+    *,
+    n0: int,
+    k: int,
+    cuda: bool = False,
+    periodic: bool = False,
+    boxsize: Array | float | Tuple[float, ...] | None = None,
+) -> Array:
     """
     Query the k-nearest neighbors of each point among the preceding points, starting from point n0.
 
     Args:
-        points: Input points in tree order of shape ```(N, d)```.
-        split_dims: Split dimension for each point of shape ```(N,)```.
+        points: Input points in tree order of shape ``(N, d)``.
+        split_dims: Split dimension for each point of shape ``(N,)``.
         k: Number of neighbors to query.
         n0: Starting point for the query.
+        cuda: Whether to use the CUDA extension for the non-periodic path.
+        periodic: If ``True``, use periodic nearest-neighbor distances under the minimum-image convention.
+        boxsize: Side lengths of the periodic box. Required when ``periodic=True``.
+            A scalar applies to all dimensions.
 
     Returns:
-        tuple:
-            - neighbors: Indices of the neighbors of shape ``(N - n0, k)``.
-            - distances: Distances to the neighbors of shape ``(N - n0, k)``.
+        neighbors: Indices of the neighbors of shape ``(N - n0, k)``.
     """
     if n0 < k:
         raise ValueError(f"n0 must be at least k. Got n0={n0}, k={k}.")
+    if periodic:
+        if cuda:
+            raise NotImplementedError("Periodic nearest-neighbor queries are currently only implemented on the CPU path.")
+        return _query_preceding_neighbors_periodic(points, n0=n0, k=k, boxsize=boxsize)
     if cuda:
         if not has_cuda:
             raise ImportError("CUDA extension not installed, cannot use cuda=True.")
         return graphgp_cuda.query_preceding_neighbors(points, split_dims, n0=n0, k=k)
     query_indices = jnp.arange(n0, len(points))
     return query_neighbors(points, split_dims, query_indices, query_indices, k=k)
+
+
+def _normalize_boxsize(boxsize, ndim: int):
+    if boxsize is None:
+        raise ValueError("boxsize must be provided when periodic=True.")
+    box = np.asarray(boxsize, dtype=np.float64)
+    if box.ndim == 0:
+        box = np.full(ndim, float(box), dtype=np.float64)
+    if box.shape != (ndim,):
+        raise ValueError(f"boxsize must be scalar or shape ({ndim},). Got shape {box.shape}.")
+    if np.any(box <= 0.0):
+        raise ValueError(f"boxsize entries must be strictly positive. Got {box}.")
+    return box
+
+
+def _query_preceding_neighbors_periodic(points: Array, *, n0: int, k: int, boxsize) -> Array:
+    """
+    Periodic nearest-neighbor queries under the minimum-image convention.
+
+    This path uses SciPy's cKDTree with a toroidal ``boxsize``. It rebuilds the
+    tree for the preceding set of points for each query index, which is slower
+    than the non-periodic JAX/CUDA traversal but robust and exact for the
+    periodic metric.
+    """
+    if not has_scipy:
+        raise ImportError("Periodic nearest-neighbor queries require scipy.spatial.cKDTree.")
+
+    points_np = np.asarray(points, dtype=np.float64)
+    box = _normalize_boxsize(boxsize, points_np.shape[1])
+
+    if np.any(points_np < 0.0) or np.any(points_np >= box[None, :]):
+        raise ValueError(
+            "For periodic queries, all points must lie inside the half-open box [0, boxsize) along each axis."
+        )
+
+    neighbors = np.empty((len(points_np) - n0, k), dtype=np.int32)
+    for row, idx in enumerate(range(n0, len(points_np))):
+        tree = cKDTree(points_np[:idx], boxsize=box)
+        _, nbr = tree.query(points_np[idx], k=k)
+        nbr = np.atleast_1d(nbr).astype(np.int32)
+        neighbors[row] = nbr
+    return jnp.asarray(neighbors)
 
 
 @Partial(jax.jit, static_argnames=("k", "cuda"))

@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Tuple, Callable, Optional
 
 import jax
 import jax.numpy as jnp
@@ -10,13 +10,14 @@ import numpy as np
 
 from .graph import Graph
 
+CovElem = Callable[[Array, Array], Array]  # (d,), (d,) -> (ncomp, ncomp)
+
 try:
     import graphgp_cuda
 
     has_cuda = True
 except ImportError:
     has_cuda = False
-
 
 def generate(
     graph: Graph,
@@ -303,3 +304,451 @@ def cov_lookup(r, cov_bins, cov_vals):
     If `r` is above the last bin, the last value is returned. Maybe the last value should be zero.
     """
     return jnp.interp(r, cov_bins, cov_vals)
+
+
+# =========================
+# Vector-valued extensions
+# =========================
+
+
+def _get_cuda_vector_kernel_params(cov_elem: CovElem, *, jitter: float, dtype, int_dtype):
+    """
+    Extract parameters for the CUDA vector-field kernel from a covariance callable.
+
+    The CUDA path cannot call an arbitrary Python ``cov_elem`` from device code.
+    It therefore supports the 3-component divergence-free RBF tensor whose
+    parameters are carried as lightweight metadata on the Python callable.
+    """
+    meta = getattr(cov_elem, "_graphgp_cuda", None)
+    if isinstance(meta, dict):
+        kernel = meta.get("kernel")
+        if kernel not in ("divfree_rbf", "div_free_rbf_vector_3"):
+            kernel = None
+        if bool(meta.get("image_sum", False)):
+            raise NotImplementedError(
+                "cuda=True for vector fields supports the min-image div-free RBF kernel, "
+                "but not the 27-image periodic sum variant yet."
+            )
+        ell = meta.get("ell")
+        sigma2 = meta.get("sigma2", 1.0)
+        periodic = meta.get("periodic", True)
+    else:
+        kernel = getattr(cov_elem, "_graphgp_cuda_kernel", None)
+        ell = getattr(cov_elem, "_graphgp_cuda_ell", None)
+        sigma2 = getattr(cov_elem, "_graphgp_cuda_sigma2", 1.0)
+        periodic = getattr(cov_elem, "_graphgp_cuda_periodic", True)
+
+    if kernel != "div_free_rbf_vector_3" and kernel != "divfree_rbf":
+        raise NotImplementedError(
+            "cuda=True for vector fields currently supports only the magnetic "
+            "3x3 divergence-free RBF tensor created by "
+            "graphgp.extras.make_div_free_rbf_covariance(...), or an equivalent "
+            "callable carrying _graphgp_cuda metadata."
+        )
+    if ell is None:
+        raise ValueError("CUDA vector covariance metadata is missing the correlation length 'ell'.")
+
+    params = jnp.asarray([float(ell), float(sigma2), float(jitter), 1.0 if bool(periodic) else 0.0], dtype=dtype)
+    return params.astype(dtype), jnp.asarray(3, dtype=int_dtype)
+
+
+def compute_cov_matrix_elem(cov_elem: CovElem, points_a: Array, points_b: Array) -> Array:
+    """
+    Build the *block* covariance matrix for a vector-valued GP.
+
+    Args:
+        cov_elem: callable cov_elem(x, y) -> (ncomp, ncomp)
+        points_a: (Na, d)
+        points_b: (Nb, d)
+
+    Returns:
+        Block covariance of shape (Na*ncomp, Nb*ncomp)
+    """
+    if points_a.ndim != 2 or points_b.ndim != 2:
+        raise ValueError("points_a and points_b must have shape (N, d)")
+
+    # blocks[a, b] = cov_elem(points_a[a], points_b[b])  -> (Na, Nb, ncomp, ncomp)
+    blocks = jax.vmap(
+        lambda xa: jax.vmap(lambda yb: cov_elem(xa, yb), in_axes=0, out_axes=0)(points_b),
+        in_axes=0,
+        out_axes=0,
+    )(points_a)
+
+    ncomp = blocks.shape[-1]
+    # reshape (Na, Nb, ncomp, ncomp) -> (Na*ncomp, Nb*ncomp)
+    blocks = jnp.transpose(blocks, (0, 2, 1, 3))  # (Na, ncomp, Nb, ncomp)
+    return blocks.reshape((points_a.shape[0] * ncomp, points_b.shape[0] * ncomp))
+
+
+def make_separable_vector_covariance(
+    covariance: Tuple[Array, Array],
+    component_cov: Array,
+) -> CovElem:
+    """
+    Convenience: lift a scalar, radial GraphGP covariance (bins/vals) to a vector covariance
+    via a *constant* component covariance matrix C:
+
+        Cov(v_i(x), v_j(y)) = k(|x-y|) * C_ij
+    """
+    cov_bins, cov_vals = covariance
+    C = jnp.asarray(component_cov)
+    if C.ndim != 2 or C.shape[0] != C.shape[1]:
+        raise ValueError("component_cov must be a square (ncomp, ncomp) matrix")
+
+    def cov_elem(x: Array, y: Array) -> Array:
+        r = jnp.linalg.norm(x - y)
+        k = cov_lookup(r, cov_bins, cov_vals)
+        return k * C
+
+    return cov_elem
+
+
+def generate_vector(
+    graph: Graph,
+    cov_elem: CovElem,
+    xi: Array,
+    *,
+    cuda: bool = False,
+    fast_jit: bool = True,
+) -> Array:
+    """
+    Vector-valued analogue of `generate`:
+
+    - `xi` has shape (N, ncomp)
+    - returns values of shape (N, ncomp)
+    - `cov_elem(x, y)` returns (ncomp, ncomp)
+    """
+    if xi.ndim != 2:
+        raise ValueError(f"xi must have shape (N, ncomp). Got {xi.shape}.")
+    if xi.shape[0] != len(graph.points):
+        raise ValueError("Leading dimension of xi must match number of points in graph.")
+
+    n0 = len(graph.points) - len(graph.neighbors)
+    if graph.indices is not None:
+        xi = xi[graph.indices]
+
+    initial_values = generate_dense_vector(graph.points[:n0], cov_elem, xi[:n0])
+    values = refine_vector(
+        graph.points,
+        graph.neighbors,
+        graph.offsets,
+        cov_elem,
+        initial_values,
+        xi[n0:],
+        cuda=cuda,
+        fast_jit=fast_jit,
+    )
+
+    if graph.indices is not None:
+        values = jnp.empty_like(values).at[graph.indices].set(values, unique_indices=True)
+    values = jnp.where(jnp.any(jnp.isnan(values)), jnp.full_like(values, jnp.nan), values)
+    return values
+
+
+def generate_dense_vector(points: Array, cov_elem: CovElem, xi: Array) -> Array:
+    """
+    Dense Cholesky generation for vector-valued GP on `points` (in tree order).
+
+    points: (N, d)
+    xi:     (N, ncomp)
+    returns (N, ncomp)
+    """
+    if xi.ndim != 2:
+        raise ValueError(f"xi must have shape (N, ncomp). Got {xi.shape}.")
+    if xi.shape[0] != len(points):
+        raise ValueError("Leading dimension of xi must match number of points.")
+
+    K = compute_cov_matrix_elem(cov_elem, points, points)  # (N*ncomp, N*ncomp)
+    L = jnp.linalg.cholesky(K)
+    vals = L @ xi.reshape((-1,))
+    return vals.reshape((len(points), xi.shape[1]))
+
+
+def _local_conditional_mats_vector(cov_elem: CovElem, joint_points: Array, *, k: int, ncomp: int, jitter: float):
+    """
+    joint_points: (k+1, d)
+    returns:
+      R:      (ncomp, k*ncomp)  so mean = R @ vec(coarse_values)
+      cholD:  (ncomp, ncomp)    so noise = cholD @ xi_f
+    """
+    K = compute_cov_matrix_elem(cov_elem, joint_points, joint_points)
+    m = k * ncomp
+    Kcc = K[:m, :m]
+    Kcf = K[:m, m:]       # (m, ncomp)
+    Kff = K[m:, m:]       # (ncomp, ncomp)
+
+    # Solve Kcc * A = Kcf  => A = Kcc^{-1} Kcf
+    A = jnp.linalg.solve(Kcc, Kcf)              # (m, ncomp)
+    D = Kff - Kcf.T @ A                         # (ncomp, ncomp)
+    if jitter != 0.0:
+        D = D + jitter * jnp.eye(ncomp, dtype=D.dtype)
+    cholD = jnp.linalg.cholesky(D)
+    R = A.T                                     # (ncomp, m)
+    return R, cholD
+
+
+def refine_vector(
+    points: Array,
+    neighbors: Array,
+    offsets: Tuple[int, ...],
+    cov_elem: CovElem,
+    initial_values: Array,
+    xi: Array,
+    *,
+    cuda: bool = False,
+    fast_jit: bool = True,
+    jitter: float = 0.0,
+) -> Array:
+    """
+    Vector-valued analogue of `refine`.
+
+    points:         (N, d) in tree/depth order
+    neighbors:      (N-n0, k)
+    initial_values: (n0, ncomp)
+    xi:             (N-n0, ncomp)
+    returns:        (N, ncomp)
+    """
+    n0 = len(points) - len(neighbors)
+    if initial_values.shape[0] != n0:
+        raise ValueError("initial_values must have leading dimension n0.")
+    if initial_values.ndim != 2:
+        raise ValueError("initial_values must have shape (n0, ncomp).")
+    if xi.ndim != 2 or xi.shape[0] != (len(points) - n0):
+        raise ValueError("xi must have shape (N-n0, ncomp).")
+
+    if cuda:
+        if not has_cuda:
+            raise ImportError("CUDA extension not installed, cannot use cuda=True.")
+        params, ncomp_cuda = _get_cuda_vector_kernel_params(
+            cov_elem, jitter=jitter, dtype=points.dtype, int_dtype=neighbors.dtype
+        )
+        return graphgp_cuda.refine_vector(
+            points,
+            neighbors,
+            jnp.asarray(offsets, dtype=neighbors.dtype),
+            initial_values,
+            xi,
+            params,
+        )
+
+    k = int(neighbors.shape[1])
+    ncomp = int(initial_values.shape[1])
+
+    if fast_jit:
+        import numpy as np
+
+        max_batch = int(np.max(np.diff(np.array(offsets))))
+
+        values = jnp.zeros((len(points), ncomp), dtype=initial_values.dtype)
+        values = values.at[:n0, :].set(initial_values)
+
+        coarse_points = points[neighbors]                         # (N-n0, k, d)
+        joint_points = jnp.concatenate([coarse_points, points[n0:, None, :]], axis=1)  # (N-n0, k+1, d)
+
+        # Precompute R and cholD for all refined points
+        local = jax.vmap(
+            lambda jp: _local_conditional_mats_vector(cov_elem, jp, k=k, ncomp=ncomp, jitter=jitter),
+            in_axes=0,
+            out_axes=(0, 0),
+        )
+        R_all, cholD_all = local(joint_points)                    # (N-n0, ncomp, k*ncomp), (N-n0, ncomp, ncomp)
+
+        m = k * ncomp
+
+        def step(values, start):
+            i0 = start - n0
+
+            neigh = lax.dynamic_slice(neighbors, (i0, 0), (max_batch, k))                 # (B, k)
+            neigh_vals = values[neigh]                                                    # (B, k, ncomp)
+            cvec = neigh_vals.reshape((max_batch, m))                                      # (B, m)
+
+            R = lax.dynamic_slice(R_all, (i0, 0, 0), (max_batch, ncomp, m))               # (B, ncomp, m)
+            mean = jnp.einsum("bim,bm->bi", R, cvec)                                       # (B, ncomp)
+
+            cholD = lax.dynamic_slice(cholD_all, (i0, 0, 0), (max_batch, ncomp, ncomp))   # (B, ncomp, ncomp)
+            xi_slice = lax.dynamic_slice(xi, (i0, 0), (max_batch, ncomp))                 # (B, ncomp)
+            noise = jnp.einsum("bij,bj->bi", cholD, xi_slice)                              # (B, ncomp)
+
+            out_slice = mean + noise
+            values = lax.dynamic_update_slice(values, out_slice, (start, 0))
+            return values, None
+
+        values, _ = lax.scan(step, values, jnp.array(offsets[:-1]))
+        return values
+
+    # Non-fast path (python loop, mirrors scalar implementation’s slow branch)
+    values = initial_values
+    for i in range(1, len(offsets)):
+        start = offsets[i - 1]
+        end = offsets[i]
+        coarse_points = jnp.take(points, neighbors[start - n0 : end - n0], axis=0)    # (B,k,d)
+        coarse_values = jnp.take(values, neighbors[start - n0 : end - n0], axis=0)    # (B,k,ncomp)
+        fine_points = points[start:end]                                               # (B,d)
+        fine_xi = xi[start - n0 : end - n0]                                           # (B,ncomp)
+
+        def one(cp, cv, fp, z):
+            jp = jnp.concatenate([cp, fp[None, :]], axis=0)
+            R, cholD = _local_conditional_mats_vector(cov_elem, jp, k=k, ncomp=ncomp, jitter=jitter)
+            mean = R @ cv.reshape((-1,))
+            return mean + cholD @ z
+
+        batch_vals = jax.vmap(one)(coarse_points, coarse_values, fine_points, fine_xi)  # (B,ncomp)
+        values = jnp.concatenate([values, batch_vals], axis=0)
+    return values
+
+
+def generate_vector_inv(
+    graph: Graph,
+    cov_elem: CovElem,
+    values: Array,
+    *,
+    cuda: bool = False,
+    fast_jit: bool = True,
+    jitter: float = 0.0,
+) -> Array:
+    """
+    Inverse of `generate_vector`. Returns xi with shape (N, ncomp).
+    """
+    if values.ndim != 2:
+        raise ValueError("values must have shape (N, ncomp).")
+    if values.shape[0] != len(graph.points):
+        raise ValueError("Leading dimension of values must match number of points in graph.")
+
+    n0 = len(graph.points) - len(graph.neighbors)
+    if graph.indices is not None:
+        values = values[graph.indices]
+
+    initial_values, xi_ref = refine_vector_inv(
+        graph.points, graph.neighbors, graph.offsets, cov_elem, values,
+        cuda=cuda, fast_jit=fast_jit, jitter=jitter
+    )
+    xi0 = generate_dense_vector_inv(graph.points[:n0], cov_elem, initial_values)
+    xi = jnp.concatenate([xi0, xi_ref], axis=0)
+
+    if graph.indices is not None:
+        xi = jnp.empty_like(xi).at[graph.indices].set(xi, unique_indices=True)
+    xi = jnp.where(jnp.any(jnp.isnan(xi)), jnp.full_like(xi, jnp.nan), xi)
+    return xi
+
+
+def generate_dense_vector_inv(points: Array, cov_elem: CovElem, values: Array) -> Array:
+    if values.ndim != 2:
+        raise ValueError("values must have shape (N, ncomp).")
+    if values.shape[0] != len(points):
+        raise ValueError("Leading dimension of values must match number of points.")
+    K = compute_cov_matrix_elem(cov_elem, points, points)
+    L = jnp.linalg.cholesky(K)
+    xi = jnp.linalg.solve(L, values.reshape((-1,)))
+    return xi.reshape(values.shape)
+
+
+def refine_vector_inv(
+    points: Array,
+    neighbors: Array,
+    offsets: Tuple[int, ...],
+    cov_elem: CovElem,
+    values: Array,
+    *,
+    cuda: bool = False,
+    fast_jit: bool = True,
+    jitter: float = 0.0,
+) -> Tuple[Array, Array]:
+    """
+    Inverse of `refine_vector`. Returns (initial_values, xi_ref).
+    """
+    n0 = len(points) - len(neighbors)
+    if values.ndim != 2 or values.shape[0] != len(points):
+        raise ValueError("values must have shape (N, ncomp).")
+    if cuda:
+        if not has_cuda:
+            raise ImportError("CUDA extension not installed, cannot use cuda=True.")
+        params, ncomp_cuda = _get_cuda_vector_kernel_params(
+            cov_elem, jitter=jitter, dtype=points.dtype, int_dtype=neighbors.dtype
+        )
+        return graphgp_cuda.refine_vector_inv(
+            points,
+            neighbors,
+            jnp.asarray(offsets, dtype=neighbors.dtype),
+            values,
+            params,
+        )
+
+    k = int(neighbors.shape[1])
+    ncomp = int(values.shape[1])
+    m = k * ncomp
+
+    coarse_points = points[neighbors]
+    joint_points = jnp.concatenate([coarse_points, points[n0:, None, :]], axis=1)  # (N-n0, k+1, d)
+
+    local = jax.vmap(
+        lambda jp: _local_conditional_mats_vector(cov_elem, jp, k=k, ncomp=ncomp, jitter=jitter),
+        in_axes=0,
+        out_axes=(0, 0),
+    )
+    R_all, cholD_all = local(joint_points)  # (N-n0, ncomp, m), (N-n0, ncomp, ncomp)
+
+    neigh_vals = values[neighbors]                           # (N-n0, k, ncomp)
+    cvec = neigh_vals.reshape((len(neigh_vals), m))          # (N-n0, m)
+    mean = jnp.einsum("bim,bm->bi", R_all, cvec)             # (N-n0, ncomp)
+
+    resid = values[n0:] - mean                               # (N-n0, ncomp)
+    xi = jax.vmap(lambda L, r: jnp.linalg.solve(L, r))(cholD_all, resid)
+    return values[:n0], xi
+
+
+def generate_vector_logdet(
+    graph: Graph,
+    cov_elem: CovElem,
+    *,
+    cuda: bool = False,
+    jitter: float = 0.0,
+) -> Array:
+    n0 = len(graph.points) - len(graph.neighbors)
+    return generate_dense_vector_logdet(graph.points[:n0], cov_elem) + refine_vector_logdet(
+        graph.points, graph.neighbors, graph.offsets, cov_elem, cuda=cuda, jitter=jitter
+    )
+
+
+def generate_dense_vector_logdet(points: Array, cov_elem: CovElem) -> Array:
+    K = compute_cov_matrix_elem(cov_elem, points, points)
+    L = jnp.linalg.cholesky(K)
+    return jnp.sum(jnp.log(jnp.diagonal(L)))
+
+
+def refine_vector_logdet(
+    points: Array,
+    neighbors: Array,
+    offsets: Tuple[int, ...],
+    cov_elem: CovElem,
+    *,
+    cuda: bool = False,
+    jitter: float = 0.0,
+) -> Array:
+    if cuda:
+        if not has_cuda:
+            raise ImportError("CUDA extension not installed, cannot use cuda=True.")
+        params, ncomp_cuda = _get_cuda_vector_kernel_params(
+            cov_elem, jitter=jitter, dtype=points.dtype, int_dtype=neighbors.dtype
+        )
+        return graphgp_cuda.refine_vector_logdet(
+            points,
+            neighbors,
+            jnp.asarray(offsets, dtype=neighbors.dtype),
+            params,
+        )
+
+    n0 = len(points) - len(neighbors)
+    k = int(neighbors.shape[1])
+
+    # Infer ncomp by evaluating once on first point-pair
+    C00 = cov_elem(points[0], points[0])
+    ncomp = int(C00.shape[0])
+
+    coarse_points = points[neighbors]
+    joint_points = jnp.concatenate([coarse_points, points[n0:, None, :]], axis=1)
+    _, cholD_all = jax.vmap(
+        lambda jp: _local_conditional_mats_vector(cov_elem, jp, k=k, ncomp=ncomp, jitter=jitter),
+        in_axes=0,
+        out_axes=(0, 0),
+    )(joint_points)
+    return jnp.sum(jnp.log(jnp.diagonal(cholD_all, axis1=-2, axis2=-1)))
