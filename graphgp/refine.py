@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Callable, Tuple, Union
 
 import jax
 import jax.numpy as jnp
@@ -17,10 +17,12 @@ try:
 except ImportError:
     has_cuda = False
 
+Covariance = Union[Tuple[Array, Array], Callable[[Array, Array], Array]]
+
 
 def generate(
     graph: Graph,
-    covariance: Tuple[Array, Array],
+    covariance: Covariance,
     xi: Array,
     *,
     cuda: bool = False,
@@ -32,10 +34,10 @@ def generate(
 
     Args:
         graph: An instance of ``Graph``, can be checked for validity with ``check_graph``.
-        covariance: Tuple of arrays (cov_bins, cov_vals) storing discretized covariance. If using your own covariance, inflate k(0) by a small factor to ensure positive definite.
+        covariance: Tuple of arrays (cov_bins, cov_vals) storing discretized covariance, or a callable ``cov(x1, x2)`` taking two points of shape ``(d,)`` and returning a scalar. If using your own covariance, inflate k(0) by a small factor to ensure positive definite.
         xi: Unit normal distributed parameters of shape ``(N,).``
         reorder: Whether to reorder parameters and values according to the original order of the points. Default is ``True``.
-        cuda: Whether to use optional CUDA extension, if installed. Will still use CUDA GPU via JAX if available. Default is ``False`` but recommended if possible for performance.
+        cuda: Whether to use optional CUDA extension, if installed. Requires a discretized covariance. Will still use CUDA GPU via JAX if available. Default is ``False`` but recommended if possible for performance.
         fast_jit: Whether to use version of refinement that compiles faster, if cuda=False. Default is ``True`` but runtime performance and memory usage will suffer slightly.
 
     Returns:
@@ -56,14 +58,14 @@ def generate(
     return values
 
 
-def generate_dense(points: Array, covariance: Tuple[Array, Array], xi: Array) -> Array:
+def generate_dense(points: Array, covariance: Covariance, xi: Array) -> Array:
     """
     Generate a GP with a dense Cholesky decomposition. Note that to compare with the GraphGP values,
     the points must be provided in tree order.
 
     Args:
         points: Locations of points to model of shape ``(N, d)``
-        covariance: Tuple of arrays (cov_bins, cov_vals) storing discretized covariance. If using your own covariance, inflate k(0) by a small factor to ensure positive definite.
+        covariance: Tuple of arrays (cov_bins, cov_vals) storing discretized covariance, or a callable ``cov(x1, x2)`` taking two points of shape ``(d,)`` and returning a scalar. If using your own covariance, inflate k(0) by a small factor to ensure positive definite.
         xi: Unit normal distributed parameters of shape ``(N,).``
     Returns:
         The generated values of shape ``(N,).``
@@ -80,7 +82,7 @@ def refine(
     points: Array,
     neighbors: Array,
     offsets: Tuple[int, ...],
-    covariance: Tuple[Array, Array],
+    covariance: Covariance,
     initial_values: Array,
     xi: Array,
     *,
@@ -98,10 +100,10 @@ def refine(
         points: Modeled points in tree order of shape ``(N, d)``.
         neighbors: Indices of the neighbors of shape ``(N - offsets[0], k)``.
         offsets: Tuple of length ``B`` representing the end index of each batch.
-        covariance: Tuple of arrays (cov_bins, cov_vals) storing discretized covariance. If using your own covariance, inflate k(0) by a small factor to ensure positive definite.
+        covariance: Tuple of arrays (cov_bins, cov_vals) storing discretized covariance, or a callable ``cov(x1, x2)`` taking two points of shape ``(d,)`` and returning a scalar. If using your own covariance, inflate k(0) by a small factor to ensure positive definite.
         initial_values: Initial values of shape ``(offsets[0],).``
         xi: Unit normal distributed parameters of shape ``(N - offsets[0],).``
-        cuda: Whether to use optional CUDA extension, if installed. Will still use CUDA GPU via JAX if available. Default is ``False`` but recommended if possible for performance.
+        cuda: Whether to use optional CUDA extension, if installed. Requires a discretized covariance. Will still use CUDA GPU via JAX if available. Default is ``False`` but recommended if possible for performance.
         fast_jit: Whether to use version of refinement that compiles faster, if cuda=False. Default is ``True`` but runtime performance and memory usage will suffer.
 
     Returns:
@@ -116,6 +118,7 @@ def refine(
     if cuda:
         if not has_cuda:
             raise ImportError("CUDA extension not installed, cannot use cuda=True.")
+        _check_discretized(covariance)
         values = graphgp_cuda.refine(
             points, neighbors, jnp.asarray(offsets, dtype=neighbors.dtype), *covariance, initial_values, xi
         )
@@ -161,7 +164,7 @@ def refine(
 
 def generate_inv(
     graph: Graph,
-    covariance: Tuple[Array, Array],
+    covariance: Covariance,
     values: Array,
     *,
     cuda: bool = False,
@@ -183,7 +186,7 @@ def generate_inv(
     return xi
 
 
-def generate_dense_inv(points: Array, covariance: Tuple[Array, Array], values: Array) -> Array:
+def generate_dense_inv(points: Array, covariance: Covariance, values: Array) -> Array:
     """
     Inverse of ``generate_dense``.
     """
@@ -199,7 +202,7 @@ def refine_inv(
     points: Array,
     neighbors: Array,
     offsets: Tuple[int, ...],
-    covariance: Tuple[Array, Array],
+    covariance: Covariance,
     values: Array,
     *,
     cuda: bool = False,
@@ -213,6 +216,7 @@ def refine_inv(
     if cuda:
         if not has_cuda:
             raise ImportError("CUDA extension not installed, cannot use cuda=True.")
+        _check_discretized(covariance)
         initial_values, xi = graphgp_cuda.refine_inv(
             points, neighbors, jnp.asarray(offsets, dtype=neighbors.dtype), *covariance, values
         )
@@ -231,7 +235,7 @@ def refine_inv(
     return initial_values, xi
 
 
-def generate_logdet(graph: Graph, covariance: Tuple[Array, Array], *, cuda: bool = False) -> Array:
+def generate_logdet(graph: Graph, covariance: Covariance, *, cuda: bool = False) -> Array:
     """
     Log determinant of ``generate``.
     """
@@ -240,7 +244,7 @@ def generate_logdet(graph: Graph, covariance: Tuple[Array, Array], *, cuda: bool
     return dense_logdet + refine_logdet(graph.points, graph.neighbors, graph.offsets, covariance, cuda=cuda)
 
 
-def generate_dense_logdet(points: Array, covariance: Tuple[Array, Array]) -> Array:
+def generate_dense_logdet(points: Array, covariance: Covariance) -> Array:
     """
     Log determinant of ``generate_dense``.
     """
@@ -252,7 +256,7 @@ def refine_logdet(
     points: Array,
     neighbors: Array,
     offsets: Tuple[int, ...],
-    covariance: Tuple[Array, Array],
+    covariance: Covariance,
     *,
     cuda: bool = False,
 ) -> Array:
@@ -262,6 +266,7 @@ def refine_logdet(
     if cuda:
         if not has_cuda:
             raise ImportError("CUDA extension not installed, cannot use cuda=True.")
+        _check_discretized(covariance)
         logdet = graphgp_cuda.refine_logdet(points, neighbors, jnp.asarray(offsets, dtype=neighbors.dtype), *covariance)
     else:
         n0 = len(points) - len(neighbors)
@@ -285,14 +290,27 @@ def _conditional_mean_std(covariance, coarse_points, coarse_values, fine_point):
     return mean, std
 
 
-def compute_cov_matrix(covariance: Tuple[Array, Array], points_a: Array, points_b: Array) -> Array:
-    distances = jnp.expand_dims(points_a, -2) - jnp.expand_dims(points_b, -3)
-    distances = jnp.linalg.norm(distances, axis=-1)
-    if isinstance(covariance, Tuple) and isinstance(covariance[0], Array) and isinstance(covariance[1], Array):
+def compute_cov_matrix(covariance: Covariance, points_a: Array, points_b: Array) -> Array:
+    """
+    Compute the covariance matrix between ``points_a`` of shape ``(..., N, d)`` and ``points_b`` of shape ``(..., M, d)``.
+    ``covariance`` is either a tuple ``(cov_bins, cov_vals)`` storing a discretized stationary covariance, or a callable
+    ``cov(x1, x2)`` taking two points of shape ``(d,)`` and returning a scalar.
+    """
+    if callable(covariance):
+        cov = jnp.vectorize(covariance, signature="(d),(d)->()")
+        return cov(jnp.expand_dims(points_a, -2), jnp.expand_dims(points_b, -3))
+    elif isinstance(covariance, tuple) and len(covariance) == 2:
         cov_bins, cov_vals = covariance
+        distances = jnp.expand_dims(points_a, -2) - jnp.expand_dims(points_b, -3)
+        distances = jnp.linalg.norm(distances, axis=-1)
         return cov_lookup(distances, cov_bins, cov_vals)
     else:
-        raise ValueError("Invalid covariance specification.")
+        raise TypeError("covariance must be a tuple (cov_bins, cov_vals) or a callable cov(x1, x2).")
+
+
+def _check_discretized(covariance):
+    if callable(covariance) or not (isinstance(covariance, tuple) and len(covariance) == 2):
+        raise TypeError("cuda=True requires a discretized covariance tuple (cov_bins, cov_vals).")
 
 
 def cov_lookup(r, cov_bins, cov_vals):

@@ -78,3 +78,21 @@ def test_approaches_dense():
     K = J @ J.T
     dense_K = gp.compute_cov_matrix(covariance, graph.points, graph.points)
     assert jnp.allclose(K, dense_K, atol=0.02), "Covariance does not match dense within atol=0.02."
+
+
+def test_callable_covariance(setup_graph):
+    graph, covariance, points = setup_graph
+
+    # Same Matern-1/2 kernel as the fixture, as a function instead of a lookup table
+    def matern12(x1, x2):
+        r = jnp.linalg.norm(x1 - x2)
+        return jnp.exp(-r) * jnp.where(r == 0.0, 1.0 + 1e-5, 1.0)
+
+    xi = jr.normal(rng, (graph.points.shape[0],))
+    v_table = jax.jit(gp.generate)(graph, covariance, xi)
+    v_func = jax.jit(lambda g, xi: gp.generate(g, matern12, xi))(graph, xi)
+    assert jnp.allclose(v_table, v_func, atol=1e-3), "Callable covariance does not match discretized within atol=1e-3."
+
+    logdet_table = jax.jit(gp.generate_logdet)(graph, covariance)
+    logdet_func = jax.jit(lambda g: gp.generate_logdet(g, matern12))(graph)
+    check_equal(logdet_table, logdet_func, rtol=1e-3, text="Callable covariance logdet does not match discretized.")
