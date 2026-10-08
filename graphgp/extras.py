@@ -23,7 +23,7 @@ def covariance_from_spectrum(radial_bins, k_bins, *, d, normalize=True):
         radial_bins: Bins at which to evaluate the covariance.
         k_bins: Edges of the power spectrum bins defining the isotropic part of the corresponding harmonic space.
         d: Dimensionality of the space.
-        normalize: Whether to return normalized kernels or not (Default True)
+        normalize: Whether to return kernels normalized to one. (Default True)
 
     Returns:
         cov_func: Callable taking the power spectrum in defined k bins, returning covariance values at cov_bins.
