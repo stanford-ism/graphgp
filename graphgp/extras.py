@@ -3,12 +3,55 @@ from typing import Tuple
 import jax.numpy as jnp
 from jax import Array
 
+from scipy.special import jv, gamma
+
 try:
     from jax.scipy.special import gammaln
 
     has_scipy = True
 except ImportError:
     has_scipy = False
+
+
+def covariance_from_spectrum(cov_bins, logk, *, d):
+    """
+    Create a function which converts a discretized power spectrum to a discretized covariance.
+    Certain values must be precomputed outside of JAX, hence the factory function.
+    Specifically, this computes the integrals analytically using Bessel functions assuming piecewise constant P(k).
+
+    Args:
+        cov_bins: Radial bins at which to evaluate the covariance. First entry should probably be zero.
+        logk: Logarithmic k values defining the upper edges of the power spectrum bins. The first bin is assumed to start at k=0.
+        d: Dimensionality of the space.
+
+    Returns:
+        cov_func: Callable taking logarithmic power spectrum in the defined k bins, plus overall variance kwarg, returning covariance values at cov_bins.
+    """
+
+    # Precompute Hankel matrix (uses SciPy)
+    k = jnp.concatenate([jnp.array([0.0]), jnp.exp(logk)])
+    hankel_matrix = compute_hankel_matrix(k, cov_bins, d=d)
+
+    def cov_func(logp, *, variance):
+        cov_vals = hankel_matrix @ jnp.exp(logp)
+        cov_vals = variance * (cov_vals / cov_vals[0])
+        return cov_vals
+
+    return cov_func
+
+
+def compute_hankel_matrix(k, r, *, d):
+    """
+    Compute matrix to convert P(k) to C(r) via Hankel transform in d dimensions.
+    Assumes P(k) is piecewise constant between k bins, output will have shape (len(r), len(k)-1).
+    Requires scipy for Bessel functions, so this cannot be differentiated through.
+    """
+    r = r[:, None]
+    limits = (k / (2 * np.pi * r)) ** (d / 2) * jv(d / 2, k * r)
+    zero = (k / 2) ** d / (np.pi ** (d / 2) * gamma(d / 2 + 1))
+    weights = np.where(r > 0, limits[:, 1:] - limits[:, :-1], zero[None, 1:] - zero[None, :-1])
+    return weights
+
 
 
 def rbf_kernel(
