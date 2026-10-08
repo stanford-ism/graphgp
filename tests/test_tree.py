@@ -48,7 +48,7 @@ def test_query_preceding():
     n0 = 30
 
     original_points = jr.normal(rng, (n_points, n_dim))
-    points, split_dims, indices = gp.build_tree(original_points)
+    points, split_dims, _indices = gp.build_tree(original_points)
     neighbors = gp.query_preceding_neighbors(points, split_dims, n0=n0, k=k)
 
     pairwise_distance = jnp.linalg.norm(points[:, None, :] - points[None, :, :], axis=-1)

@@ -1,13 +1,11 @@
 import jax
 import jax.numpy as jnp
 import jax.random as jr
+import pytest
 from jax.tree_util import Partial
+from test_tree import check_equal
 
 import graphgp as gp
-
-import pytest
-
-from test_tree import check_equal
 
 rng = jr.key(137)
 
@@ -27,7 +25,7 @@ def setup_graph():
 
 
 def test_logdet_random(setup_graph):
-    graph, covariance, points = setup_graph
+    graph, covariance, _points = setup_graph
     check_equal(graph.points[0, 0], -1.95624711, rtol=1e-8, text="RNG or setup changed, cannot run test")
     check_equal(
         jax.jit(gp.generate_logdet)(graph, covariance),
@@ -44,7 +42,7 @@ def test_logdet_random(setup_graph):
 
 
 def test_inverse(setup_graph):
-    graph, covariance, points = setup_graph
+    graph, covariance, _points = setup_graph
     xi = jr.normal(rng, (graph.points.shape[0],))
     values = jax.jit(gp.generate)(graph, covariance, xi)
     xi_back = jax.jit(gp.generate_inv)(graph, covariance, values)
@@ -55,7 +53,7 @@ def test_inverse(setup_graph):
 
 
 def test_fast_jit(setup_graph):
-    graph, covariance, points = setup_graph
+    graph, covariance, _points = setup_graph
     xi = jr.normal(rng, (graph.points.shape[0],))
 
     v1 = jax.jit(gp.generate)(graph, covariance, xi)
@@ -81,7 +79,7 @@ def test_approaches_dense():
 
 
 def test_callable_covariance(setup_graph):
-    graph, covariance, points = setup_graph
+    graph, covariance, _points = setup_graph
 
     # Same Matern-1/2 kernel as the fixture, as a function instead of a lookup table
     def matern12(x1, x2):

@@ -1,11 +1,9 @@
 from dataclasses import dataclass, field
-from typing import Tuple
 
 import jax
 import jax.numpy as jnp
-from jax.tree_util import Partial, register_dataclass
 from jax import Array
-
+from jax.tree_util import Partial, register_dataclass
 
 from .tree import build_tree, query_preceding_neighbors
 
@@ -37,7 +35,7 @@ class Graph:
 
     points: Array
     neighbors: Array
-    offsets: Tuple[int, ...] = field(metadata=dict(static=True))
+    offsets: tuple[int, ...] = field(metadata={"static": True})
     indices: Array | None = None
 
 
@@ -108,7 +106,7 @@ def compute_depths(neighbors, *, n0, cuda=False):
         depths = jnp.zeros(n0 + len(neighbors), dtype=jnp.int32)
 
         def update(carry):
-            old_depths, depths = carry
+            _old_depths, depths = carry
             new_depths = depths.at[jnp.arange(n0, len(depths))].set(1 + jnp.max(depths[neighbors], axis=1))
             return depths, new_depths
 

@@ -1,12 +1,10 @@
-from typing import Tuple
-
 import jax.numpy as jnp
+import numpy as np
 from jax import Array
 from jax.scipy.special import gammaln
-import numpy as np
 
 try:
-    from scipy.special import jv, gamma
+    from scipy.special import gamma, jv
 
     has_scipy = True
 except ImportError:
@@ -63,7 +61,7 @@ def rbf_kernel(
     r_max: float,
     n_bins: int,
     jitter: float = 0.0,
-) -> Tuple[Array, Array]:
+) -> tuple[Array, Array]:
     """
     Radial basis function (squared exponential) covariance.
 
@@ -84,7 +82,7 @@ def matern_kernel(
     r_max: float,
     n_bins: int,
     jitter: float = 0.0,
-) -> Tuple[Array, Array]:
+) -> tuple[Array, Array]:
     """
     Matern covariance function for nu = p + 1/2. Power spectrum has -(nu + n/2) slope. Not differentiable with respect to ``p``.
 

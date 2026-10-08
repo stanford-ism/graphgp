@@ -1,11 +1,9 @@
 from __future__ import annotations
-from typing import Tuple
 
 import jax
 import jax.numpy as jnp
-from jax import lax
+from jax import Array, lax
 from jax.tree_util import Partial
-from jax import Array
 
 try:
     import graphgp_cuda
@@ -16,7 +14,7 @@ except ImportError:
 
 
 @Partial(jax.jit, static_argnames=("cuda",))
-def build_tree(points: Array, cuda: bool = False) -> Tuple[Array, Array, Array]:
+def build_tree(points: Array, cuda: bool = False) -> tuple[Array, Array, Array]:
     """
     Build k-d tree in special order.
 

@@ -1,12 +1,10 @@
-from typing import Callable, Tuple, Union
+from collections.abc import Callable
 
 import jax
 import jax.numpy as jnp
-from jax.tree_util import Partial
-from jax import Array
-from jax import lax
-
 import numpy as np
+from jax import Array, lax
+from jax.tree_util import Partial
 
 from .graph import Graph
 
@@ -17,7 +15,7 @@ try:
 except ImportError:
     has_cuda = False
 
-Covariance = Union[Tuple[Array, Array], Callable[[Array, Array], Array]]
+Covariance = tuple[Array, Array] | Callable[[Array, Array], Array]
 
 
 def generate(
@@ -81,7 +79,7 @@ def generate_dense(points: Array, covariance: Covariance, xi: Array) -> Array:
 def refine(
     points: Array,
     neighbors: Array,
-    offsets: Tuple[int, ...],
+    offsets: tuple[int, ...],
     covariance: Covariance,
     initial_values: Array,
     xi: Array,
@@ -201,12 +199,12 @@ def generate_dense_inv(points: Array, covariance: Covariance, values: Array) -> 
 def refine_inv(
     points: Array,
     neighbors: Array,
-    offsets: Tuple[int, ...],
+    offsets: tuple[int, ...],
     covariance: Covariance,
     values: Array,
     *,
     cuda: bool = False,
-) -> Tuple[Array, Array]:
+) -> tuple[Array, Array]:
     """
     Inverse of ``refine``.
     """
@@ -255,7 +253,7 @@ def generate_dense_logdet(points: Array, covariance: Covariance) -> Array:
 def refine_logdet(
     points: Array,
     neighbors: Array,
-    offsets: Tuple[int, ...],
+    offsets: tuple[int, ...],
     covariance: Covariance,
     *,
     cuda: bool = False,
