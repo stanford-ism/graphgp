@@ -131,11 +131,9 @@ def refine(
 
         # Precompute matrix factorizations for all points
         coarse_points = points[neighbors]
-        joint_points = jnp.concatenate([coarse_points, points[n0:, None]], axis=1)
-        K = jax.vmap(compute_cov_matrix, in_axes=(None, 0, 0))(covariance, joint_points, joint_points)
-        L = jnp.linalg.cholesky(K)
-        mean_vec = jnp.linalg.solve(L[:, :k, :k].transpose(0, 2, 1), L[:, k, :k][..., None]).squeeze(-1)
-        std = L[:, k, k]
+        mean_vec, std = jax.vmap(_conditional_weights_std, in_axes=(None, 0, 0))(
+            covariance, coarse_points, points[n0:]
+        )
 
         # For each batch defined by offsets, dot neighbor values with mean_vec and add noise
         def step(values, start):
@@ -281,13 +279,18 @@ def refine_logdet(
 
 
 def _conditional_mean_std(covariance, coarse_points, coarse_values, fine_point):
-    k = len(coarse_points)
+    weights, std = _conditional_weights_std(covariance, coarse_points, fine_point)
+    return weights @ coarse_values, std
+
+
+def _conditional_weights_std(covariance, coarse_points, fine_point):
+    """Return conditional-mean weights and standard deviation for one node."""
+    k = coarse_points.shape[0]
     joint_points = jnp.concatenate([coarse_points, fine_point[jnp.newaxis]], axis=0)
     K = compute_cov_matrix(covariance, joint_points, joint_points)
     L = jnp.linalg.cholesky(K)
-    mean = L[k, :k] @ jnp.linalg.solve(L[:k, :k], coarse_values)
-    std = L[k, k]
-    return mean, std
+    weights = jnp.linalg.solve(L[:k, :k].T, L[k, :k])
+    return weights, L[k, k]
 
 
 def compute_cov_matrix(covariance: Covariance, points_a: Array, points_b: Array) -> Array:

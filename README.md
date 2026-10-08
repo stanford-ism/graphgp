@@ -28,6 +28,36 @@ covariance = gp.extras.rbf_kernel(variance=1.0, scale=0.3, r_min=1e-4, r_max=1e1
 values = gp.generate(graph, covariance, xi)
 ```
 
+## Distributed generation
+
+GraphGP dependency graphs can be partitioned over a JAX device mesh while
+preserving the single-device model exactly.  Each node is evaluated once by
+its owner; only the dense seed and remote parent values are communicated.
+
+```python
+import numpy as np
+from jax.sharding import Mesh
+
+mesh = Mesh(np.asarray(jax.devices()), ("space",))
+owners = np.repeat(np.arange(mesh.size), len(points) // mesh.size)
+plan = gp.distributed.partition_graph(graph, owners)
+values = gp.distributed.generate(plan, covariance, xi, mesh=mesh)
+```
+
+`owners` is expressed in the original point order and may describe any
+geometric partition.  At least one output dimension must be divisible by the
+number of partitions; the first such axis is spatially sharded.
+`partition_stats(plan)` reports graph cuts, padding,
+predicted communication, and the replication cost of the reference
+ancestor-recompute implementation.
+
+The distributed backend is pure JAX and supports `jit`, leading batch axes,
+JVP, VJP, and gradients with respect to discretized covariance values.  The
+CUDA extension is currently limited to single-device generation.
+
+For the mathematical model, execution sequence, communication layout, and
+current limitations, see [the distributed GraphGP design note](docs/distributed_graphgp.md).
+
 ## Installation
 To install, use pip. The only dependency is JAX.
 

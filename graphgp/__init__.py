@@ -19,6 +19,7 @@ from .refine import (
     compute_cov_matrix,
 )
 from . import extras
+from . import distributed
 
 __all__ = [
     "build_tree",
@@ -39,4 +40,5 @@ __all__ = [
     "refine_logdet",
     "compute_cov_matrix",
     "extras",
+    "distributed",
 ]

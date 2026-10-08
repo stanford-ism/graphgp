@@ -15,7 +15,7 @@ jobs:
       - name: Install Ruff
         run: |
           python -m pip install --upgrade pip
-          pip install ruff 
+          pip install 'ruff==0.11.11'
 
       - name: Run Ruff
         run: ruff check . --output-format=github
@@ -23,8 +23,21 @@ jobs:
   pytest:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        python-version: ["3.11", "3.12", "3.13"]
+        include:
+          - python-version: "3.11"
+            jax-spec: "jax==0.5.3"
+            label: "py311-jax053"
+          - python-version: "3.11"
+            jax-spec: "jax"
+            label: "py311-latest"
+          - python-version: "3.12"
+            jax-spec: "jax"
+            label: "py312-latest"
+          - python-version: "3.13"
+            jax-spec: "jax"
+            label: "py313-latest"
         
     steps:
       - uses: actions/checkout@v4
@@ -35,16 +48,17 @@ jobs:
       - name: Install package and dependencies
         run: |
           python -m pip install --upgrade pip
+          pip install '${{ matrix.jax-spec }}'
           pip install . 
 
       - name: Run pytest
         run: |
           pip install pytest
-          python -m pytest tests/ --junitxml=junit/test-results-${{ matrix.python-version }}.xml
+          XLA_FLAGS=--xla_force_host_platform_device_count=4 python -m pytest tests/ --junitxml=junit/test-results-${{ matrix.label }}.xml
 
       - name: Upload pytest test results
         uses: actions/upload-artifact@v4
         with:
-          name: pytest-results-${{ matrix.python-version }}
-          path: junit/test-results-${{ matrix.python-version }}.xml
+          name: pytest-results-${{ matrix.label }}
+          path: junit/test-results-${{ matrix.label }}.xml
         if: ${{ always() }}
