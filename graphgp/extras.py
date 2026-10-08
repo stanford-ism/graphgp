@@ -123,5 +123,5 @@ def logspace_radial_bins(*, r_min: float, r_max: float, n_bins: int, base=10) ->
 
 def logspace_k_bins(*, r_min: float, r_max: float, n_bins: int, base=10) -> Array:
     return logspace_radial_bins(
-        r_min=1.0 / r_max, r_min=1.0 / r_min, n_bins=n_bins, base=base
+        r_min=1.0 / r_max, r_max=1.0 / r_min, n_bins=n_bins, base=base
     )
