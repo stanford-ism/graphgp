@@ -6,6 +6,7 @@ import numpy as np
 from jax import Array, lax
 from jax.tree_util import Partial
 
+from .custom_cholesky import cholesky, solve_lower, solve_lower_transpose
 from .graph import Graph
 
 try:
@@ -25,6 +26,7 @@ def generate(
     *,
     cuda: bool = False,
     fast_jit: bool = True,
+    clamp: bool = True,
 ) -> Array:
     """
     Generate a GP with dense Cholesky for the first layer followed by conditional refinement.
@@ -37,6 +39,7 @@ def generate(
         reorder: Whether to reorder parameters and values according to the original order of the points. Default is ``True``.
         cuda: Whether to use optional CUDA extension, if installed. Requires a discretized covariance. Will still use CUDA GPU via JAX if available. Default is ``False`` but recommended if possible for performance.
         fast_jit: Whether to use version of refinement that compiles faster, if cuda=False. Default is ``True`` but runtime performance and memory usage will suffer slightly.
+        clamp: Handle near-duplicate points by dropping Cholesky pivots below floating point resolution, avoiding NaN. The xi for dropped points have no effect and the values are set to their conditional mean. The set of dropped points may change as the covariance changes. Derivatives hold the set of points fixed. Default is ``True`` which incurs a performance penalty in the pure JAX version. If ``cuda=True``, clamping cannot be disabled.
 
     Returns:
         The generated values of shape ``(N,).``
@@ -46,9 +49,17 @@ def generate(
     n0 = len(graph.points) - len(graph.neighbors)
     if graph.indices is not None:
         xi = xi[graph.indices]
-    initial_values = generate_dense(graph.points[:n0], covariance, xi[:n0])
+    initial_values = generate_dense(graph.points[:n0], covariance, xi[:n0], clamp=clamp)
     values = refine(
-        graph.points, graph.neighbors, graph.offsets, covariance, initial_values, xi[n0:], cuda=cuda, fast_jit=fast_jit
+        graph.points,
+        graph.neighbors,
+        graph.offsets,
+        covariance,
+        initial_values,
+        xi[n0:],
+        cuda=cuda,
+        fast_jit=fast_jit,
+        clamp=clamp,
     )
     if graph.indices is not None:
         values = jnp.empty_like(values).at[graph.indices].set(values, unique_indices=True)
@@ -56,7 +67,7 @@ def generate(
     return values
 
 
-def generate_dense(points: Array, covariance: Covariance, xi: Array) -> Array:
+def generate_dense(points: Array, covariance: Covariance, xi: Array, *, clamp: bool = True) -> Array:
     """
     Generate a GP with a dense Cholesky decomposition. Note that to compare with the GraphGP values,
     the points must be provided in tree order.
@@ -65,13 +76,14 @@ def generate_dense(points: Array, covariance: Covariance, xi: Array) -> Array:
         points: Locations of points to model of shape ``(N, d)``
         covariance: Tuple of arrays (cov_bins, cov_vals) storing discretized covariance, or a callable ``cov(x1, x2)`` taking two points of shape ``(d,)`` and returning a scalar. If using your own covariance, inflate k(0) by a small factor to ensure positive definite.
         xi: Unit normal distributed parameters of shape ``(N,).``
+        clamp: Handle near-duplicate points by dropping Cholesky pivots below floating point resolution, avoiding NaN. The xi for dropped points have no effect and the values are set to their conditional mean. The set of dropped points may change as the covariance changes. Derivatives hold the set of points fixed. Default is ``True`` which incurs a performance penalty in the pure JAX version. If ``cuda=True``, clamping cannot be disabled.
     Returns:
         The generated values of shape ``(N,).``
     """
     if len(xi) != len(points):
         raise ValueError("Length of xi must match number of points.")
     K = compute_cov_matrix(covariance, points, points)
-    L = jnp.linalg.cholesky(K)
+    L = _cholesky(K, clamp)
     values = L @ xi
     return values
 
@@ -86,6 +98,7 @@ def refine(
     *,
     cuda: bool = False,
     fast_jit: bool = True,
+    clamp: bool = True,
 ) -> Array:
     """
     Conditionally generate using initial values according to GraphGP algorithm. Most users can use ``generate``, which
@@ -103,6 +116,7 @@ def refine(
         xi: Unit normal distributed parameters of shape ``(N - offsets[0],).``
         cuda: Whether to use optional CUDA extension, if installed. Requires a discretized covariance. Will still use CUDA GPU via JAX if available. Default is ``False`` but recommended if possible for performance.
         fast_jit: Whether to use version of refinement that compiles faster, if cuda=False. Default is ``True`` but runtime performance and memory usage will suffer.
+        clamp: Handle near-duplicate points by dropping Cholesky pivots below floating point resolution, avoiding NaN. The xi for dropped points have no effect and the values are set to their conditional mean. The set of dropped points may change as the covariance changes. Derivatives hold the set of points fixed. Default is ``True`` which incurs a performance penalty in the pure JAX version. If ``cuda=True``, clamping cannot be disabled.
 
     Returns:
         The refined values of shape ``(N,).``
@@ -116,6 +130,8 @@ def refine(
     if cuda:
         if not has_cuda:
             raise ImportError("CUDA extension not installed, cannot use cuda=True.")
+        if not clamp:
+            raise ValueError("clamp=False is not supported with cuda=True, the CUDA extension always clamps.")
         _check_discretized(covariance)
         values = graphgp_cuda.refine(
             points, neighbors, jnp.asarray(offsets, dtype=neighbors.dtype), *covariance, initial_values, xi
@@ -131,8 +147,8 @@ def refine(
         coarse_points = points[neighbors]
         joint_points = jnp.concatenate([coarse_points, points[n0:, None]], axis=1)
         K = jax.vmap(compute_cov_matrix, in_axes=(None, 0, 0))(covariance, joint_points, joint_points)
-        L = jnp.linalg.cholesky(K)
-        mean_vec = jnp.linalg.solve(L[:, :k, :k].transpose(0, 2, 1), L[:, k, :k][..., None]).squeeze(-1)
+        L = _cholesky(K, clamp)
+        mean_vec = _kriging_weights(L, k, clamp)
         std = L[:, k, k]
 
         # For each batch defined by offsets, dot neighbor values with mean_vec and add noise
@@ -154,7 +170,9 @@ def refine(
             coarse_values = jnp.take(values, neighbors[start - n0 : end - n0], axis=0)
             fine_point = points[start:end]
             fine_xi = xi[start - n0 : end - n0]
-            mean, std = jax.vmap(Partial(_conditional_mean_std, covariance))(coarse_points, coarse_values, fine_point)
+            mean, std = jax.vmap(Partial(_conditional_mean_std, covariance, clamp=clamp))(
+                coarse_points, coarse_values, fine_point
+            )
             values = jnp.concatenate([values, mean + std * fine_xi], axis=0)
 
     return values
@@ -166,17 +184,21 @@ def generate_inv(
     values: Array,
     *,
     cuda: bool = False,
+    clamp: bool = True,
 ) -> Array:
     """
     Inverse of ``generate``. Ensure that the choice for ``reorder`` is the same. Recommended to JIT compile.
+    With ``clamp=True``, dropped points receive ``xi = 0``.
     """
     if len(values) != len(graph.points):
         raise ValueError("Length of values must match number of points in graph.")
     n0 = len(graph.points) - len(graph.neighbors)
     if graph.indices is not None:
         values = values[graph.indices]
-    initial_values, xi = refine_inv(graph.points, graph.neighbors, graph.offsets, covariance, values, cuda=cuda)
-    initial_xi = generate_dense_inv(graph.points[:n0], covariance, initial_values)
+    initial_values, xi = refine_inv(
+        graph.points, graph.neighbors, graph.offsets, covariance, values, cuda=cuda, clamp=clamp
+    )
+    initial_xi = generate_dense_inv(graph.points[:n0], covariance, initial_values, clamp=clamp)
     xi = jnp.concatenate([initial_xi, xi], axis=0)
     if graph.indices is not None:
         xi = jnp.empty_like(xi).at[graph.indices].set(xi, unique_indices=True)
@@ -184,15 +206,15 @@ def generate_inv(
     return xi
 
 
-def generate_dense_inv(points: Array, covariance: Covariance, values: Array) -> Array:
+def generate_dense_inv(points: Array, covariance: Covariance, values: Array, *, clamp: bool = True) -> Array:
     """
-    Inverse of ``generate_dense``.
+    Inverse of ``generate_dense``. With ``clamp=True``, dropped points receive ``xi = 0``.
     """
     if len(values) != len(points):
         raise ValueError("Length of values must match number of points.")
     K = compute_cov_matrix(covariance, points, points)
-    L = jnp.linalg.cholesky(K)
-    xi = jnp.linalg.solve(L, values)
+    L = _cholesky(K, clamp)
+    xi = _solve_lower(L, values, clamp)
     return xi
 
 
@@ -204,9 +226,10 @@ def refine_inv(
     values: Array,
     *,
     cuda: bool = False,
+    clamp: bool = True,
 ) -> tuple[Array, Array]:
     """
-    Inverse of ``refine``.
+    Inverse of ``refine``. With ``clamp=True``, dropped points receive ``xi = 0``.
     """
     n0 = len(points) - len(neighbors)  # should equal offsets[0]
     if len(values) != len(points):
@@ -214,6 +237,8 @@ def refine_inv(
     if cuda:
         if not has_cuda:
             raise ImportError("CUDA extension not installed, cannot use cuda=True.")
+        if not clamp:
+            raise ValueError("clamp=False is not supported with cuda=True, the CUDA extension always clamps.")
         _check_discretized(covariance)
         initial_values, xi = graphgp_cuda.refine_inv(
             points, neighbors, jnp.asarray(offsets, dtype=neighbors.dtype), *covariance, values
@@ -223,30 +248,36 @@ def refine_inv(
         coarse_points = points[neighbors]
         joint_points = jnp.concatenate([coarse_points, points[n0:, None]], axis=1)
         K = jax.vmap(compute_cov_matrix, in_axes=(None, 0, 0))(covariance, joint_points, joint_points)
-        L = jnp.linalg.cholesky(K)
-        mean_vec = jnp.linalg.solve(L[:, :k, :k].transpose(0, 2, 1), L[:, k, :k][..., None]).squeeze(-1)
+        L = _cholesky(K, clamp)
+        mean_vec = _kriging_weights(L, k, clamp)
         mean = jnp.sum(mean_vec * values[neighbors], axis=1)
         std = L[:, k, k]
 
-        xi = (values[n0:] - mean) / std
+        xi = _safe_div(values[n0:] - mean, std) if clamp else (values[n0:] - mean) / std
         initial_values = values[:n0]
     return initial_values, xi
 
 
-def generate_logdet(graph: Graph, covariance: Covariance, *, cuda: bool = False) -> Array:
+def generate_logdet(graph: Graph, covariance: Covariance, *, cuda: bool = False, clamp: bool = True) -> Array:
     """
     Log determinant of ``generate``.
+    With ``clamp=True``, the result is ``-inf`` if any point is dropped, since the density is then degenerate.
     """
     n0 = len(graph.points) - len(graph.neighbors)
-    dense_logdet = generate_dense_logdet(graph.points[:n0], covariance)
-    return dense_logdet + refine_logdet(graph.points, graph.neighbors, graph.offsets, covariance, cuda=cuda)
+    dense_logdet = generate_dense_logdet(graph.points[:n0], covariance, clamp=clamp)
+    return dense_logdet + refine_logdet(
+        graph.points, graph.neighbors, graph.offsets, covariance, cuda=cuda, clamp=clamp
+    )
 
 
-def generate_dense_logdet(points: Array, covariance: Covariance) -> Array:
+def generate_dense_logdet(points: Array, covariance: Covariance, *, clamp: bool = True) -> Array:
     """
     Log determinant of ``generate_dense``.
+    With ``clamp=True``, the result is ``-inf`` if any point is dropped, since the density is then degenerate.
     """
     K = compute_cov_matrix(covariance, points, points)
+    if clamp:
+        return jnp.sum(jnp.log(jnp.diagonal(cholesky(K), axis1=-2, axis2=-1)))
     return jnp.linalg.slogdet(K)[1] / 2
 
 
@@ -257,13 +288,17 @@ def refine_logdet(
     covariance: Covariance,
     *,
     cuda: bool = False,
+    clamp: bool = True,
 ) -> Array:
     """
     Log determinant of ``refine``.
+    With ``clamp=True``, the result is ``-inf`` if any point is dropped, since the density is then degenerate.
     """
     if cuda:
         if not has_cuda:
             raise ImportError("CUDA extension not installed, cannot use cuda=True.")
+        if not clamp:
+            raise ValueError("clamp=False is not supported with cuda=True, the CUDA extension always clamps.")
         _check_discretized(covariance)
         logdet = graphgp_cuda.refine_logdet(points, neighbors, jnp.asarray(offsets, dtype=neighbors.dtype), *covariance)
     else:
@@ -272,20 +307,40 @@ def refine_logdet(
         coarse_points = points[neighbors]
         joint_points = jnp.concatenate([coarse_points, points[n0:, None]], axis=1)
         K = jax.vmap(compute_cov_matrix, in_axes=(None, 0, 0))(covariance, joint_points, joint_points)
-        L = jnp.linalg.cholesky(K)
+        L = _cholesky(K, clamp)
         std = L[:, k, k]
         logdet = jnp.sum(jnp.log(std))
     return logdet
 
 
-def _conditional_mean_std(covariance, coarse_points, coarse_values, fine_point):
+def _conditional_mean_std(covariance, coarse_points, coarse_values, fine_point, *, clamp=True):
     k = len(coarse_points)
     joint_points = jnp.concatenate([coarse_points, fine_point[jnp.newaxis]], axis=0)
     K = compute_cov_matrix(covariance, joint_points, joint_points)
-    L = jnp.linalg.cholesky(K)
-    mean = L[k, :k] @ jnp.linalg.solve(L[:k, :k], coarse_values)
+    L = _cholesky(K, clamp)
+    mean = L[k, :k] @ _solve_lower(L[:k, :k], coarse_values, clamp)
     std = L[k, k]
     return mean, std
+
+
+def _cholesky(K, clamp):
+    return cholesky(K) if clamp else jnp.linalg.cholesky(K)
+
+
+def _solve_lower(L, b, clamp):
+    return solve_lower(L, b) if clamp else jnp.linalg.solve(L, b)
+
+
+def _kriging_weights(L, k, clamp):
+    """Weights of the neighbor values in the conditional mean, ``L_cc^-T L_fc``, for a batch of factors ``L``."""
+    if clamp:
+        return solve_lower_transpose(L[:, :k, :k], L[:, k, :k])
+    return jnp.linalg.solve(L[:, :k, :k].transpose(0, 2, 1), L[:, k, :k][..., None]).squeeze(-1)
+
+
+def _safe_div(a, b):
+    """``a / b``, or zero where ``b == 0`` (dropped pivot), without NaN gradients."""
+    return jnp.where(b == 0, 0, a / jnp.where(b == 0, 1, b))
 
 
 def compute_cov_matrix(covariance: Covariance, points_a: Array, points_b: Array) -> Array:
