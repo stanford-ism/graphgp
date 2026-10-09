@@ -6,7 +6,7 @@ import numpy as np
 from jax import Array, lax
 from jax.tree_util import Partial
 
-from .custom_cholesky import cholesky, solve_lower, solve_lower_transpose
+from .custom_cholesky import cholesky, permute, pivot_order, solve_lower, solve_lower_transpose
 from .graph import Graph
 
 try:
@@ -39,7 +39,7 @@ def generate(
         reorder: Whether to reorder parameters and values according to the original order of the points. Default is ``True``.
         cuda: Whether to use optional CUDA extension, if installed. Requires a discretized covariance. Will still use CUDA GPU via JAX if available. Default is ``False`` but recommended if possible for performance.
         fast_jit: Whether to use version of refinement that compiles faster, if cuda=False. Default is ``True`` but runtime performance and memory usage will suffer slightly.
-        clamp: Handle near-duplicate points by dropping Cholesky pivots below floating point resolution, avoiding NaN. The xi for dropped points have no effect and the values are set to their conditional mean. The set of dropped points may change as the covariance changes. Derivatives hold the set of points fixed. Default is ``True`` which incurs a performance penalty in the pure JAX version. If ``cuda=True``, clamping cannot be disabled.
+        clamp: Handle near-duplicate points by dropping Cholesky pivots below floating point resolution, avoiding NaN. The xi for dropped points have no effect and the values are set to their conditional mean. The set of dropped points may change as the covariance changes. Derivatives hold the set of points fixed. Default is ``True`` which incurs a performance penalty in the pure JAX version. If ``cuda=True``, clamping cannot be disabled. With clamping, each point's neighbors are also ordered by pivoting for numerical stability.
 
     Returns:
         The generated values of shape ``(N,).``
@@ -76,7 +76,7 @@ def generate_dense(points: Array, covariance: Covariance, xi: Array, *, clamp: b
         points: Locations of points to model of shape ``(N, d)``
         covariance: Tuple of arrays (cov_bins, cov_vals) storing discretized covariance, or a callable ``cov(x1, x2)`` taking two points of shape ``(d,)`` and returning a scalar. If using your own covariance, inflate k(0) by a small factor to ensure positive definite.
         xi: Unit normal distributed parameters of shape ``(N,).``
-        clamp: Handle near-duplicate points by dropping Cholesky pivots below floating point resolution, avoiding NaN. The xi for dropped points have no effect and the values are set to their conditional mean. The set of dropped points may change as the covariance changes. Derivatives hold the set of points fixed. Default is ``True`` which incurs a performance penalty in the pure JAX version. If ``cuda=True``, clamping cannot be disabled.
+        clamp: Handle near-duplicate points by dropping Cholesky pivots below floating point resolution, avoiding NaN. The xi for dropped points have no effect and the values are set to their conditional mean. The set of dropped points may change as the covariance changes. Derivatives hold the set of points fixed. Default is ``True`` which incurs a performance penalty in the pure JAX version. If ``cuda=True``, clamping cannot be disabled. With clamping, each point's neighbors are also ordered by pivoting for numerical stability.
     Returns:
         The generated values of shape ``(N,).``
     """
@@ -116,7 +116,7 @@ def refine(
         xi: Unit normal distributed parameters of shape ``(N - offsets[0],).``
         cuda: Whether to use optional CUDA extension, if installed. Requires a discretized covariance. Will still use CUDA GPU via JAX if available. Default is ``False`` but recommended if possible for performance.
         fast_jit: Whether to use version of refinement that compiles faster, if cuda=False. Default is ``True`` but runtime performance and memory usage will suffer.
-        clamp: Handle near-duplicate points by dropping Cholesky pivots below floating point resolution, avoiding NaN. The xi for dropped points have no effect and the values are set to their conditional mean. The set of dropped points may change as the covariance changes. Derivatives hold the set of points fixed. Default is ``True`` which incurs a performance penalty in the pure JAX version. If ``cuda=True``, clamping cannot be disabled.
+        clamp: Handle near-duplicate points by dropping Cholesky pivots below floating point resolution, avoiding NaN. The xi for dropped points have no effect and the values are set to their conditional mean. The set of dropped points may change as the covariance changes. Derivatives hold the set of points fixed. Default is ``True`` which incurs a performance penalty in the pure JAX version. If ``cuda=True``, clamping cannot be disabled. With clamping, each point's neighbors are also ordered by pivoting for numerical stability.
 
     Returns:
         The refined values of shape ``(N,).``
@@ -147,6 +147,7 @@ def refine(
         coarse_points = points[neighbors]
         joint_points = jnp.concatenate([coarse_points, points[n0:, None]], axis=1)
         K = jax.vmap(compute_cov_matrix, in_axes=(None, 0, 0))(covariance, joint_points, joint_points)
+        K, neighbors = _pivot_neighbors(K, neighbors, clamp)
         L = _cholesky(K, clamp)
         mean_vec = _kriging_weights(L, k, clamp)
         std = L[:, k, k]
@@ -248,6 +249,7 @@ def refine_inv(
         coarse_points = points[neighbors]
         joint_points = jnp.concatenate([coarse_points, points[n0:, None]], axis=1)
         K = jax.vmap(compute_cov_matrix, in_axes=(None, 0, 0))(covariance, joint_points, joint_points)
+        K, neighbors = _pivot_neighbors(K, neighbors, clamp)
         L = _cholesky(K, clamp)
         mean_vec = _kriging_weights(L, k, clamp)
         mean = jnp.sum(mean_vec * values[neighbors], axis=1)
@@ -307,6 +309,7 @@ def refine_logdet(
         coarse_points = points[neighbors]
         joint_points = jnp.concatenate([coarse_points, points[n0:, None]], axis=1)
         K = jax.vmap(compute_cov_matrix, in_axes=(None, 0, 0))(covariance, joint_points, joint_points)
+        K, neighbors = _pivot_neighbors(K, neighbors, clamp)
         L = _cholesky(K, clamp)
         std = L[:, k, k]
         logdet = jnp.sum(jnp.log(std))
@@ -317,10 +320,22 @@ def _conditional_mean_std(covariance, coarse_points, coarse_values, fine_point, 
     k = len(coarse_points)
     joint_points = jnp.concatenate([coarse_points, fine_point[jnp.newaxis]], axis=0)
     K = compute_cov_matrix(covariance, joint_points, joint_points)
+    if clamp:
+        perm = pivot_order(K, k)
+        K, coarse_values = permute(K, perm), coarse_values[perm[:k]]
     L = _cholesky(K, clamp)
     mean = L[k, :k] @ _solve_lower(L[:k, :k], coarse_values, clamp)
     std = L[k, k]
     return mean, std
+
+
+def _pivot_neighbors(K, neighbors, clamp):
+    """Reorder each point's neighbors by pivoting (target stays last), returning the permuted ``K`` and ``neighbors``."""
+    if not clamp:
+        return K, neighbors
+    k = neighbors.shape[1]
+    perm = pivot_order(K, k)
+    return permute(K, perm), jnp.take_along_axis(neighbors, perm[:, :k], axis=1)
 
 
 def _cholesky(K, clamp):

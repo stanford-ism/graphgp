@@ -19,7 +19,7 @@ from jax.core import ShapedArray
 from jax.extend.core import Primitive
 from jax.interpreters import ad, batching, mlir
 
-__all__ = ["cholesky", "solve_lower", "solve_lower_transpose", "unit_pivot"]
+__all__ = ["cholesky", "permute", "pivot_order", "solve_lower", "solve_lower_transpose", "unit_pivot"]
 
 
 def cholesky(A):
@@ -28,6 +28,46 @@ def cholesky(A):
     read. Dropped pivots have ``L_jj = 0`` and a zero column below the diagonal.
     """
     return cholesky_p.bind(A)
+
+
+def pivot_order(A, n_pivot=None):
+    """
+    Order for diagonally pivoted Cholesky of ``A`` of shape ``(..., n, n)``: at each step, the remaining index with the
+    largest Schur complement diagonal (conditional variance given the indices before it) comes next. Only the first
+    ``n_pivot`` indices are reordered (default all), the rest keep their positions, e.g. so a target stays last.
+
+    Processing tiny pivots last keeps them from amplifying rounding errors in later rows, so the ``n * eps`` cutoff in
+    ``cholesky`` remains valid. Returns integer indices of shape ``(..., n)``, with no gradient. Ties go to the lowest
+    index.
+    """
+    n = A.shape[-1]
+    n_pivot = n if n_pivot is None else n_pivot
+    S = lax.stop_gradient(A)
+    rows = jnp.arange(n)
+    batch = A.shape[:-2]
+
+    def body(j, carry):
+        S, perm, used = carry
+        d = jnp.where(used | (rows >= n_pivot), -jnp.inf, jnp.diagonal(S, axis1=-2, axis2=-1))
+        p = jnp.argmax(d, axis=-1)
+        s_p = jnp.take_along_axis(S, p[..., None, None], axis=-2)[..., 0, :]  # row p of the Schur complement
+        S_pp = jnp.take_along_axis(s_p, p[..., None], axis=-1)[..., 0]
+        inv = jnp.where(S_pp > 0, 1 / jnp.where(S_pp > 0, S_pp, 1), 0)
+        S = S - inv[..., None, None] * s_p[..., :, None] * s_p[..., None, :]
+        perm = perm.at[..., j].set(p)
+        used = used | (rows == p[..., None])
+        return S, perm, used
+
+    perm = jnp.broadcast_to(rows, batch + (n,))
+    used = jnp.zeros(batch + (n,), dtype=bool)
+    _, perm, _ = lax.fori_loop(0, n_pivot, body, (S, perm, used))
+    return perm
+
+
+def permute(A, perm):
+    """Symmetric permutation ``A[perm][:, perm]`` for batched ``A`` of shape ``(..., n, n)`` and ``perm`` of ``(..., n)``."""
+    A = jnp.take_along_axis(A, perm[..., :, None], axis=-2)
+    return jnp.take_along_axis(A, perm[..., None, :], axis=-1)
 
 
 def unit_pivot(L):
