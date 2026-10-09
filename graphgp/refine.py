@@ -39,7 +39,7 @@ def generate(
         reorder: Whether to reorder parameters and values according to the original order of the points. Default is ``True``.
         cuda: Whether to use optional CUDA extension, if installed. Requires a discretized covariance. Will still use CUDA GPU via JAX if available. Default is ``False`` but recommended if possible for performance.
         fast_jit: Whether to use version of refinement that compiles faster, if cuda=False. Default is ``True`` but runtime performance and memory usage will suffer slightly.
-        clamp: Handle near-duplicate points by dropping Cholesky pivots below floating point resolution, avoiding NaN. The xi for dropped points have no effect and the values are set to their conditional mean. The set of dropped points may change as the covariance changes. Derivatives hold the set of points fixed. Default is ``True`` which incurs a performance penalty in the pure JAX version. If ``cuda=True``, clamping cannot be disabled. With clamping, each point's neighbors are also ordered by pivoting for numerical stability.
+        clamp: Handle near-duplicate points by dropping Cholesky pivots below floating point resolution, avoiding NaN. The xi for dropped points have no effect and the values are set to their conditional mean. The set of dropped points may change as the covariance changes. Derivatives hold the set of points fixed. Default is ``True`` which incurs a performance penalty in the pure JAX version. With clamping, each point's neighbors are also ordered by pivoting for numerical stability.
 
     Returns:
         The generated values of shape ``(N,).``
@@ -76,7 +76,7 @@ def generate_dense(points: Array, covariance: Covariance, xi: Array, *, clamp: b
         points: Locations of points to model of shape ``(N, d)``
         covariance: Tuple of arrays (cov_bins, cov_vals) storing discretized covariance, or a callable ``cov(x1, x2)`` taking two points of shape ``(d,)`` and returning a scalar. If using your own covariance, inflate k(0) by a small factor to ensure positive definite.
         xi: Unit normal distributed parameters of shape ``(N,).``
-        clamp: Handle near-duplicate points by dropping Cholesky pivots below floating point resolution, avoiding NaN. The xi for dropped points have no effect and the values are set to their conditional mean. The set of dropped points may change as the covariance changes. Derivatives hold the set of points fixed. Default is ``True`` which incurs a performance penalty in the pure JAX version. If ``cuda=True``, clamping cannot be disabled. With clamping, each point's neighbors are also ordered by pivoting for numerical stability.
+        clamp: Handle near-duplicate points by dropping Cholesky pivots below floating point resolution, avoiding NaN. The xi for dropped points have no effect and the values are set to their conditional mean. The set of dropped points may change as the covariance changes. Derivatives hold the set of points fixed. Default is ``True`` which incurs a performance penalty in the pure JAX version. With clamping, each point's neighbors are also ordered by pivoting for numerical stability.
     Returns:
         The generated values of shape ``(N,).``
     """
@@ -116,7 +116,7 @@ def refine(
         xi: Unit normal distributed parameters of shape ``(N - offsets[0],).``
         cuda: Whether to use optional CUDA extension, if installed. Requires a discretized covariance. Will still use CUDA GPU via JAX if available. Default is ``False`` but recommended if possible for performance.
         fast_jit: Whether to use version of refinement that compiles faster, if cuda=False. Default is ``True`` but runtime performance and memory usage will suffer.
-        clamp: Handle near-duplicate points by dropping Cholesky pivots below floating point resolution, avoiding NaN. The xi for dropped points have no effect and the values are set to their conditional mean. The set of dropped points may change as the covariance changes. Derivatives hold the set of points fixed. Default is ``True`` which incurs a performance penalty in the pure JAX version. If ``cuda=True``, clamping cannot be disabled. With clamping, each point's neighbors are also ordered by pivoting for numerical stability.
+        clamp: Handle near-duplicate points by dropping Cholesky pivots below floating point resolution, avoiding NaN. The xi for dropped points have no effect and the values are set to their conditional mean. The set of dropped points may change as the covariance changes. Derivatives hold the set of points fixed. Default is ``True`` which incurs a performance penalty in the pure JAX version. With clamping, each point's neighbors are also ordered by pivoting for numerical stability.
 
     Returns:
         The refined values of shape ``(N,).``
@@ -130,11 +130,9 @@ def refine(
     if cuda:
         if not has_cuda:
             raise ImportError("CUDA extension not installed, cannot use cuda=True.")
-        if not clamp:
-            raise ValueError("clamp=False is not supported with cuda=True, the CUDA extension always clamps.")
         _check_discretized(covariance)
         values = graphgp_cuda.refine(
-            points, neighbors, jnp.asarray(offsets, dtype=neighbors.dtype), *covariance, initial_values, xi
+            points, neighbors, jnp.asarray(offsets, dtype=neighbors.dtype), *covariance, initial_values, xi, clamp=clamp
         )
 
     elif fast_jit:
@@ -238,11 +236,9 @@ def refine_inv(
     if cuda:
         if not has_cuda:
             raise ImportError("CUDA extension not installed, cannot use cuda=True.")
-        if not clamp:
-            raise ValueError("clamp=False is not supported with cuda=True, the CUDA extension always clamps.")
         _check_discretized(covariance)
         initial_values, xi = graphgp_cuda.refine_inv(
-            points, neighbors, jnp.asarray(offsets, dtype=neighbors.dtype), *covariance, values
+            points, neighbors, jnp.asarray(offsets, dtype=neighbors.dtype), *covariance, values, clamp=clamp
         )
     else:
         k = neighbors.shape[1]
@@ -299,10 +295,10 @@ def refine_logdet(
     if cuda:
         if not has_cuda:
             raise ImportError("CUDA extension not installed, cannot use cuda=True.")
-        if not clamp:
-            raise ValueError("clamp=False is not supported with cuda=True, the CUDA extension always clamps.")
         _check_discretized(covariance)
-        logdet = graphgp_cuda.refine_logdet(points, neighbors, jnp.asarray(offsets, dtype=neighbors.dtype), *covariance)
+        logdet = graphgp_cuda.refine_logdet(
+            points, neighbors, jnp.asarray(offsets, dtype=neighbors.dtype), *covariance, clamp=clamp
+        )
     else:
         n0 = len(points) - len(neighbors)
         k = neighbors.shape[1]
