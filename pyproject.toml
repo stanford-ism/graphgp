@@ -18,16 +18,11 @@ cuda = [
     "graphgp-cuda",
 ]
 dev = [
-    "optax",
-    "jaxkd[cuda]",
-    "ipywidgets>=8.1.7",
     "jax[cuda13]",
-    "jupyterlab>=4.4.3",
+    "ipykernel",
     "matplotlib>=3.10.3",
     "pytest>=8.3.5",
     "ruff>=0.11.11",
-    "tqdm>=4.67.1",
-    "scipy",
 ]
 
 [project.urls]
@@ -44,8 +39,3 @@ source = "vcs"
 line-length = 120
 exclude = ["*.ipynb"]
 lint.ignore = ["E402"]
-
-[tool.uv]
-override-dependencies = [
-    "jax[cuda13]",  # until jaxkd>0.1.2 / jaxkd-cuda>=0.0.1 (no cuda12 pin) are on PyPI
-]

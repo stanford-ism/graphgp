@@ -8,6 +8,7 @@ from .graph import (
 )
 from .refine import (
     compute_cov_matrix,
+    cov_mixture,
     generate,
     generate_dense,
     generate_dense_inv,
@@ -27,6 +28,7 @@ __all__ = [
     "check_graph",
     "compute_cov_matrix",
     "compute_depths",
+    "cov_mixture",
     "extras",
     "generate",
     "generate_dense",

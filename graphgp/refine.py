@@ -34,10 +34,10 @@ def generate(
 
     Args:
         graph: An instance of ``Graph``, can be checked for validity with ``check_graph``.
-        covariance: Tuple of arrays (cov_bins, cov_vals) storing discretized covariance, or a callable ``cov(x1, x2)`` taking two points of shape ``(d,)`` and returning a scalar. If using your own covariance, inflate k(0) by a small factor to ensure positive definite.
+        covariance: Tuple of arrays (scales, amplitudes) defining an isotropic Gaussian mixture ``sum_m amplitudes[m] * exp(-r^2 / (2 scales[m]^2))`` (a component with ``scale = 0`` acts as a jitter), or a callable ``cov(x1, x2)`` taking two points of shape ``(d,)`` and returning a scalar.
         xi: Unit normal distributed parameters of shape ``(N,).``
         reorder: Whether to reorder parameters and values according to the original order of the points. Default is ``True``.
-        cuda: Whether to use optional CUDA extension, if installed. Requires a discretized covariance. Will still use CUDA GPU via JAX if available. Default is ``False`` but recommended if possible for performance.
+        cuda: Whether to use optional CUDA extension, if installed. Requires a Gaussian mixture covariance. Will still use CUDA GPU via JAX if available. Default is ``False`` but recommended if possible for performance.
         fast_jit: Whether to use version of refinement that compiles faster, if cuda=False. Default is ``True`` but runtime performance and memory usage will suffer slightly.
         clamp: Handle near-duplicate points by dropping Cholesky pivots below floating point resolution, avoiding NaN. The xi for dropped points have no effect and the values are set to their conditional mean. The set of dropped points may change as the covariance changes. Derivatives hold the set of points fixed. Default is ``True`` which incurs a performance penalty in the pure JAX version. With clamping, each point's neighbors are also ordered by pivoting for numerical stability.
 
@@ -74,7 +74,7 @@ def generate_dense(points: Array, covariance: Covariance, xi: Array, *, clamp: b
 
     Args:
         points: Locations of points to model of shape ``(N, d)``
-        covariance: Tuple of arrays (cov_bins, cov_vals) storing discretized covariance, or a callable ``cov(x1, x2)`` taking two points of shape ``(d,)`` and returning a scalar. If using your own covariance, inflate k(0) by a small factor to ensure positive definite.
+        covariance: Tuple of arrays (scales, amplitudes) defining an isotropic Gaussian mixture ``sum_m amplitudes[m] * exp(-r^2 / (2 scales[m]^2))`` (a component with ``scale = 0`` acts as a jitter), or a callable ``cov(x1, x2)`` taking two points of shape ``(d,)`` and returning a scalar.
         xi: Unit normal distributed parameters of shape ``(N,).``
         clamp: Handle near-duplicate points by dropping Cholesky pivots below floating point resolution, avoiding NaN. The xi for dropped points have no effect and the values are set to their conditional mean. The set of dropped points may change as the covariance changes. Derivatives hold the set of points fixed. Default is ``True`` which incurs a performance penalty in the pure JAX version. With clamping, each point's neighbors are also ordered by pivoting for numerical stability.
     Returns:
@@ -111,10 +111,10 @@ def refine(
         points: Modeled points in tree order of shape ``(N, d)``.
         neighbors: Indices of the neighbors of shape ``(N - offsets[0], k)``.
         offsets: Tuple of length ``B`` representing the end index of each batch.
-        covariance: Tuple of arrays (cov_bins, cov_vals) storing discretized covariance, or a callable ``cov(x1, x2)`` taking two points of shape ``(d,)`` and returning a scalar. If using your own covariance, inflate k(0) by a small factor to ensure positive definite.
+        covariance: Tuple of arrays (scales, amplitudes) defining an isotropic Gaussian mixture ``sum_m amplitudes[m] * exp(-r^2 / (2 scales[m]^2))`` (a component with ``scale = 0`` acts as a jitter), or a callable ``cov(x1, x2)`` taking two points of shape ``(d,)`` and returning a scalar.
         initial_values: Initial values of shape ``(offsets[0],).``
         xi: Unit normal distributed parameters of shape ``(N - offsets[0],).``
-        cuda: Whether to use optional CUDA extension, if installed. Requires a discretized covariance. Will still use CUDA GPU via JAX if available. Default is ``False`` but recommended if possible for performance.
+        cuda: Whether to use optional CUDA extension, if installed. Requires a Gaussian mixture covariance. Will still use CUDA GPU via JAX if available. Default is ``False`` but recommended if possible for performance.
         fast_jit: Whether to use version of refinement that compiles faster, if cuda=False. Default is ``True`` but runtime performance and memory usage will suffer.
         clamp: Handle near-duplicate points by dropping Cholesky pivots below floating point resolution, avoiding NaN. The xi for dropped points have no effect and the values are set to their conditional mean. The set of dropped points may change as the covariance changes. Derivatives hold the set of points fixed. Default is ``True`` which incurs a performance penalty in the pure JAX version. With clamping, each point's neighbors are also ordered by pivoting for numerical stability.
 
@@ -130,7 +130,7 @@ def refine(
     if cuda:
         if not has_cuda:
             raise ImportError("CUDA extension not installed, cannot use cuda=True.")
-        _check_discretized(covariance)
+        _check_mixture(covariance)
         values = graphgp_cuda.refine(
             points, neighbors, jnp.asarray(offsets, dtype=neighbors.dtype), *covariance, initial_values, xi, clamp=clamp
         )
@@ -236,7 +236,7 @@ def refine_inv(
     if cuda:
         if not has_cuda:
             raise ImportError("CUDA extension not installed, cannot use cuda=True.")
-        _check_discretized(covariance)
+        _check_mixture(covariance)
         initial_values, xi = graphgp_cuda.refine_inv(
             points, neighbors, jnp.asarray(offsets, dtype=neighbors.dtype), *covariance, values, clamp=clamp
         )
@@ -295,7 +295,7 @@ def refine_logdet(
     if cuda:
         if not has_cuda:
             raise ImportError("CUDA extension not installed, cannot use cuda=True.")
-        _check_discretized(covariance)
+        _check_mixture(covariance)
         logdet = graphgp_cuda.refine_logdet(
             points, neighbors, jnp.asarray(offsets, dtype=neighbors.dtype), *covariance, clamp=clamp
         )
@@ -357,31 +357,49 @@ def _safe_div(a, b):
 def compute_cov_matrix(covariance: Covariance, points_a: Array, points_b: Array) -> Array:
     """
     Compute the covariance matrix between ``points_a`` of shape ``(..., N, d)`` and ``points_b`` of shape ``(..., M, d)``.
-    ``covariance`` is either a tuple ``(cov_bins, cov_vals)`` storing a discretized stationary covariance, or a callable
+    ``covariance`` is either a tuple ``(scales, amplitudes)`` defining an isotropic Gaussian mixture (a component with
+    ``scale = 0`` acts as a jitter), or a callable
     ``cov(x1, x2)`` taking two points of shape ``(d,)`` and returning a scalar.
     """
     if callable(covariance):
         cov = jnp.vectorize(covariance, signature="(d),(d)->()")
         return cov(jnp.expand_dims(points_a, -2), jnp.expand_dims(points_b, -3))
     elif isinstance(covariance, tuple) and len(covariance) == 2:
-        cov_bins, cov_vals = covariance
-        distances = jnp.expand_dims(points_a, -2) - jnp.expand_dims(points_b, -3)
-        distances = jnp.linalg.norm(distances, axis=-1)
-        return cov_lookup(distances, cov_bins, cov_vals)
+        scales, amplitudes = covariance
+        sq_distances = jnp.sum((jnp.expand_dims(points_a, -2) - jnp.expand_dims(points_b, -3)) ** 2, axis=-1)
+        return _cov_mixture_sq(sq_distances, scales, amplitudes)
     else:
-        raise TypeError("covariance must be a tuple (cov_bins, cov_vals) or a callable cov(x1, x2).")
+        raise TypeError("covariance must be a tuple (scales, amplitudes) or a callable cov(x1, x2).")
 
 
-def _check_discretized(covariance):
+def _check_mixture(covariance):
     if callable(covariance) or not (isinstance(covariance, tuple) and len(covariance) == 2):
-        raise TypeError("cuda=True requires a discretized covariance tuple (cov_bins, cov_vals).")
+        raise TypeError("cuda=True requires a Gaussian mixture covariance tuple (scales, amplitudes).")
 
 
-def cov_lookup(r, cov_bins, cov_vals):
+def cov_mixture(r: Array, scales: Array, amplitudes: Array) -> Array:
     """
-    Look up covariance in array of sampled `cov_vals` at radii `cov_bins` (equal-sized arrays).
-    If `r` is inside of bounds, a linearly interpolated value is returned.
-    If `r` is below the first bin, the first value is returned. But really the first bin should always be 0.0.
-    If `r` is above the last bin, the last value is returned. Maybe the last value should be zero.
+    Evaluate the isotropic Gaussian mixture covariance ``sum_m amplitudes[m] * exp(-r^2 / (2 scales[m]^2))`` at
+    distances ``r`` of any shape. Positive definite in any dimension as long as all amplitudes are non-negative.
+    A component with ``scale = 0`` is a nugget, contributing its amplitude only where ``r == 0`` exactly.
     """
-    return jnp.interp(r, cov_bins, cov_vals)
+    return _cov_mixture_sq(jnp.square(r), scales, amplitudes)
+
+
+@jax.checkpoint
+def _cov_mixture_sq(r2, scales, amplitudes):
+    # Works on squared distances, so there is no sqrt (and no NaN gradient) at r = 0.
+    # Accumulates one component at a time, with checkpointing, so neither the forward nor the backward pass holds an
+    # array with an n_scales axis (XLA does not reliably fuse the broadcast-and-sum version).
+    # A zero scale is a nugget, the s -> 0 limit. The inner where avoids 0 / 0, and its gradients (zero) are exact.
+    scales, amplitudes = jnp.atleast_1d(scales), jnp.atleast_1d(amplitudes)
+    nugget = scales == 0
+    safe_sq_scales = jnp.where(nugget, 1, jnp.square(scales))
+
+    @jax.checkpoint
+    def add_component(cov, component):
+        amplitude, sq_scale, is_nugget = component
+        return cov + amplitude * jnp.where(is_nugget, r2 == 0, jnp.exp(-0.5 * r2 / sq_scale)), None
+
+    init = jnp.zeros(r2.shape, dtype=jnp.result_type(r2, amplitudes))
+    return lax.scan(add_component, init, (amplitudes, safe_sq_scales, nugget))[0]
