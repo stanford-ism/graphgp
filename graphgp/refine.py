@@ -123,8 +123,9 @@ def refine(
 
     elif fast_jit:
         k = neighbors.shape[1]
-        max_batch = np.max(np.diff(np.array(offsets)))
-        values = jnp.zeros(len(points))
+        n = len(points)
+        max_batch = int(np.max(np.diff(np.array(offsets))))
+        values = jnp.zeros(n)
         values = values.at[:n0].set(initial_values)
 
         # Precompute matrix factorizations for all points
@@ -135,15 +136,25 @@ def refine(
         mean_vec = jnp.linalg.solve(L[:, :k, :k].transpose(0, 2, 1), L[:, k, :k][..., None]).squeeze(-1)
         std = L[:, k, k]
 
+        # Every level is processed as a slice of `max_batch` entries. Pad the scanned arrays by
+        # `max_batch` so that no dynamic slice runs past the end: a clamped slice recomputes
+        # (and rewrites) points of earlier levels, which is harmless for the values but makes the
+        # transpose of the batched (vmap) slices disagree with the forward, i.e. a wrong vjp.
+        values = jnp.concatenate([values, jnp.zeros(max_batch, values.dtype)])
+        neighbors_p = jnp.concatenate([neighbors, jnp.zeros((max_batch, k), neighbors.dtype)], axis=0)
+        mean_vec = jnp.concatenate([mean_vec, jnp.zeros((max_batch, k), mean_vec.dtype)], axis=0)
+        noise = jnp.concatenate([std * xi, jnp.zeros(max_batch, std.dtype)])
+
         # For each batch defined by offsets, dot neighbor values with mean_vec and add noise
         def step(values, start):
-            neighbor_values = values[lax.dynamic_slice(neighbors, (start - n0, 0), (max_batch, k))]
+            neighbor_values = values[lax.dynamic_slice(neighbors_p, (start - n0, 0), (max_batch, k))]
             mean_slice = jnp.sum(lax.dynamic_slice(mean_vec, (start - n0, 0), (max_batch, k)) * neighbor_values, axis=1)
-            noise_slice = lax.dynamic_slice(std * xi, (start - n0,), (max_batch,))
+            noise_slice = lax.dynamic_slice(noise, (start - n0,), (max_batch,))
             values = lax.dynamic_update_slice(values, mean_slice + noise_slice, (start,))
             return values, None
 
         values, _ = lax.scan(step, values, jnp.array(offsets[:-1]))
+        values = values[:n]
 
     else:
         values = initial_values
