@@ -94,3 +94,28 @@ def test_callable_covariance(setup_graph):
     logdet_table = jax.jit(gp.generate_logdet)(graph, covariance)
     logdet_func = jax.jit(lambda g: gp.generate_logdet(g, matern12))(graph)
     check_equal(logdet_table, logdet_func, rtol=1e-3, text="Callable covariance logdet does not match discretized.")
+
+
+def test_fast_jit_vmap_vjp(setup_graph):
+    """The vjp of the batched (vmap) fast_jit generation is the transpose of its jvp,
+    with respect to the excitations and to the covariance values (regression: the
+    clamped dynamic slices of the level scan gave a wrong vjp under vmap)."""
+    graph, covariance, _points = setup_graph
+    k1, k2, k3, k4 = jr.split(rng, 4)
+    xi = jr.normal(k1, (3, graph.points.shape[0]))
+    v = jr.normal(k2, xi.shape)
+    w = jr.normal(k3, xi.shape)
+    cov_bins, cov_vals = covariance
+
+    def adjoint(f, x, tangent):
+        _, jv = jax.jvp(f, (x,), (tangent,))
+        _, vjp = jax.vjp(f, x)
+        (jt,) = vjp(w)
+        lhs, rhs = jnp.vdot(jv, w), jnp.vdot(tangent, jt)
+        assert abs(lhs - rhs) <= 1e-4 * abs(lhs), f"<Jv,w> = {lhs}, <v,J^T w> = {rhs}"
+
+    gen_xi = jax.vmap(lambda x: gp.generate(graph, covariance, x, fast_jit=True))
+    adjoint(gen_xi, xi, v)
+    check_equal(gen_xi(xi)[0], gp.generate(graph, covariance, xi[0], fast_jit=False), rtol=1e-5, text="vmap fast_jit vs simple")
+    gen_cov = lambda c: jax.vmap(lambda x: gp.generate(graph, (cov_bins, c), x, fast_jit=True))(xi)  # noqa: E731
+    adjoint(gen_cov, cov_vals, jr.normal(k4, cov_vals.shape) * 1e-2)
