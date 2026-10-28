@@ -94,3 +94,24 @@ def test_callable_covariance(setup_graph):
     logdet_table = jax.jit(gp.generate_logdet)(graph, covariance)
     logdet_func = jax.jit(lambda g: gp.generate_logdet(g, matern12))(graph)
     check_equal(logdet_table, logdet_func, rtol=1e-3, text="Callable covariance logdet does not match discretized.")
+
+
+def test_refine_level_matches_generate(setup_graph):
+    """Refining level by level with ``refine_level`` (values held in the graph's order, dummy
+    neighbors for the initial points) reproduces ``generate``."""
+    graph, covariance, _points = setup_graph
+    n = graph.points.shape[0]
+    n0 = graph.offsets[0]
+    k = graph.neighbors.shape[1]
+    xi = jr.normal(rng, (n,))
+    expected = gp.generate(graph, covariance, xi, fast_jit=False)[graph.indices]  # graph order
+    xi_tree = xi[graph.indices]
+    levels = jnp.zeros(n, dtype=jnp.int32)
+    for l in range(1, len(graph.offsets)):
+        levels = levels.at[graph.offsets[l - 1] : graph.offsets[l]].set(l)
+    neighbors = jnp.concatenate([jnp.zeros((n0, k), graph.neighbors.dtype), graph.neighbors], axis=0)
+    values = jnp.zeros(n).at[:n0].set(gp.generate_dense(graph.points[:n0], covariance, xi_tree[:n0]))
+    step = jax.jit(Partial(gp.refine_level, cuda=False))
+    for l in range(1, len(graph.offsets)):
+        values = step(graph.points, graph.points, neighbors, levels, l, covariance, values, xi_tree, values)
+    check_equal(values, expected, rtol=1e-10, text="refine_level level by level does not match generate.")
