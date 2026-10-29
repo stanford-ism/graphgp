@@ -160,6 +160,64 @@ def refine(
     return values
 
 
+def refine_level(
+    points_global: Array,
+    points_local: Array,
+    neighbors: Array,
+    levels: Array,
+    level,
+    covariance: Covariance,
+    values_global: Array,
+    xi: Array,
+    values_local: Array,
+    *,
+    cuda: bool = False,
+) -> Array:
+    """
+    One level of refinement in an arbitrary point order (the building block of a distributed generation).
+
+    ``refine`` runs all levels of a graph inside one call in the graph's order. ``refine_level`` refines only the
+    points of ``level`` among ``points_local``, conditioning them on their ``neighbors`` taken from ``values_global``,
+    so that a caller can hold the points in its own layout (for example one block per device) and exchange values
+    between levels. The math is the same conditional update as in ``refine`` (``fast_jit=True``): the mean weights
+    and the conditional standard deviation from one Cholesky factorization of the window covariance per point.
+
+    Args:
+        points_global: Points the neighbors refer to, shape ``(N, d)``.
+        points_local: The points handled here, ``(M, d)``.
+        neighbors: Their neighbors as indices into ``points_global``, ``(M, k)``; the neighbors of a point must
+            have been generated before (lower level). Points of other levels may carry dummy neighbors.
+        levels: Level of every local point, ``(M,)``; initial points have level 0.
+        level: The level to refine (an integer or an integer array of shape ``(1,)``).
+        covariance: Tuple ``(cov_bins, cov_vals)`` or a callable ``cov(x1, x2)``; the CUDA extension requires the tuple.
+        values_global: Current values of ``points_global``, ``(N,)``.
+        xi: Excitations of the local points, ``(M,)``.
+        values_local: Current values of the local points, ``(M,)``.
+        cuda: Whether to use the CUDA extension (``graphgp_cuda.refine_level``).
+
+    Returns:
+        ``values_local`` with the points of ``level`` refined, ``(M,)``.
+    """
+    level = jnp.asarray(level).reshape(1)
+    if cuda:
+        if not has_cuda:
+            raise ImportError("CUDA extension not installed, cannot use cuda=True.")
+        _check_discretized(covariance)
+        return graphgp_cuda.refine_level(
+            points_global, points_local, neighbors, levels, level, *covariance, values_global, xi, values_local
+        )
+    k = neighbors.shape[1]
+    sel = levels == level[0]
+    joint = jnp.concatenate([points_global[neighbors], points_local[:, None, :]], axis=1)
+    K = jax.vmap(compute_cov_matrix, in_axes=(None, 0, 0))(covariance, joint, joint)
+    K = jnp.where(sel[:, None, None], K, jnp.eye(k + 1, dtype=K.dtype))  # others: well conditioned, unused
+    L = jnp.linalg.cholesky(K)
+    mean_vec = jnp.linalg.solve(L[:, :k, :k].transpose(0, 2, 1), L[:, k, :k][..., None]).squeeze(-1)
+    std = L[:, k, k]
+    new = jnp.sum(mean_vec * values_global[neighbors], axis=1) + std * xi
+    return jnp.where(sel, new, values_local)
+
+
 def generate_inv(
     graph: Graph,
     covariance: Covariance,
