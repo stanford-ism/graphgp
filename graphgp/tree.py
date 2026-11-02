@@ -63,18 +63,36 @@ def query_preceding_neighbors(points: Array, split_dims: Array, *, n0: int, k: i
 
 @Partial(jax.jit, static_argnames=("k", "cuda"))
 def query_neighbors(
-    points: Array, split_dims: Array, query_indices: Array, max_indices: Array, *, k: int, cuda: bool = False
+    points: Array,
+    split_dims: Array,
+    query_indices: Array,
+    max_indices: Array,
+    max_square_distances: Array | None = None,
+    *,
+    k: int,
+    cuda: bool = False,
 ) -> Array:
+    """
+    Query the k-nearest neighbors of the points ``query_indices`` among the tree points with index below
+    ``max_indices``. With ``max_square_distances`` (per query) only points closer than that radius are
+    visited and returned; slots without a point are ``-1``.
+    """
     if cuda:
         if not has_cuda:
             raise ImportError("CUDA extension not installed, cannot use cuda=True.")
+        if max_square_distances is not None:
+            return graphgp_cuda.query_neighbors_radius(
+                points, split_dims, query_indices, max_indices, max_square_distances, k=k
+            )
         return graphgp_cuda.query_neighbors(points, split_dims, query_indices, max_indices, k=k)
 
+    if max_square_distances is None:
+        max_square_distances = jnp.full(query_indices.shape, jnp.inf, dtype=points.dtype)
     query_func = Partial(_single_query_neighbors, points, split_dims, k=k)
-    return jax.vmap(query_func)(query_indices, max_indices)
+    return jax.vmap(query_func)(query_indices, max_indices, max_square_distances)
 
 
-def _single_query_neighbors(points, split_dims, query_index, max_index, *, k):
+def _single_query_neighbors(points, split_dims, query_index, max_index, max_square_distance=jnp.inf, *, k):
     # rule for updating neighbors
     def update_func(node, state, _):
         neighbors, square_distances = state
@@ -93,12 +111,14 @@ def _single_query_neighbors(points, split_dims, query_index, max_index, *, k):
         return (neighbors, square_distances), jnp.max(square_distances)
 
     neighbors = -1 * jnp.ones(k, dtype=int)
-    square_distances = jnp.inf * jnp.ones(k, dtype=points.dtype)
+    max_square_distance = jnp.asarray(max_square_distance, dtype=points.dtype)
+    square_distances = max_square_distance * jnp.ones(k, dtype=points.dtype)
     neighbors, _ = _traverse_tree(
-        points, split_dims, query_index, max_index, update_func, (neighbors, square_distances), jnp.asarray(jnp.inf)
+        points, split_dims, query_index, max_index, update_func, (neighbors, square_distances), max_square_distance
     )
 
     distances = jnp.linalg.norm(points[neighbors] - points[query_index], axis=-1)
+    distances = jnp.where(neighbors >= 0, distances, jnp.inf)  # unfilled slots (-1) last
     distances, neighbors = lax.sort((distances, neighbors), dimension=0, num_keys=2)
     return neighbors
 

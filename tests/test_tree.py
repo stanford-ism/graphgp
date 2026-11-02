@@ -57,3 +57,21 @@ def test_query_preceding():
     true_neighbors = jnp.argsort(pairwise_distance, axis=-1)[n0:, :k]
 
     check_equal(neighbors, true_neighbors, text="Incorrect preceding neighbors")
+
+
+def test_query_neighbors_radius():
+    """Radius-limited query: the k nearest preceding points closer than the radius, -1 beyond it."""
+    n_points, n_dim, k, n0 = 1000, 3, 8, 30
+    points, split_dims, _indices = gp.build_tree(jr.normal(rng, (n_points, n_dim)))
+    query_indices = jnp.arange(n0, n_points)
+    pairwise_distance = jnp.linalg.norm(points[:, None, :] - points[None, :, :], axis=-1)
+    i, j = jnp.indices(pairwise_distance.shape)
+    pairwise_distance = pairwise_distance.at[i <= j].set(jnp.inf)[n0:]
+    true_neighbors = jnp.argsort(pairwise_distance, axis=-1)[:, :k]
+    true_distances = jnp.take_along_axis(pairwise_distance, true_neighbors, axis=-1)
+    radius = 0.5 * (true_distances[:, k // 2 - 1] + true_distances[:, k // 2])  # half of them strictly inside
+    neighbors = gp.tree.query_neighbors(points, split_dims, query_indices, query_indices, jnp.square(radius), k=k)
+    expected = jnp.where(true_distances < radius[:, None], true_neighbors, -1)
+    check_equal(neighbors, expected, text="Incorrect radius-limited neighbors")
+    unbounded = gp.tree.query_neighbors(points, split_dims, query_indices, query_indices, k=k)
+    check_equal(unbounded, true_neighbors, text="query_neighbors without radius changed")
