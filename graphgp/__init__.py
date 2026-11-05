@@ -17,6 +17,7 @@ from .refine import (
     refine,
     refine_inv,
     refine_logdet,
+    refine_step,
 )
 from .tree import build_tree, query_preceding_neighbors
 
@@ -39,4 +40,5 @@ __all__ = [
     "refine",
     "refine_inv",
     "refine_logdet",
+    "refine_step",
 ]
