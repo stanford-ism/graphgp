@@ -123,8 +123,9 @@ def refine(
 
     elif fast_jit:
         k = neighbors.shape[1]
-        max_batch = np.max(np.diff(np.array(offsets)))
-        values = jnp.zeros(len(points))
+        n = len(points)
+        max_batch = int(np.max(np.diff(np.array(offsets))))
+        values = jnp.zeros(n)
         values = values.at[:n0].set(initial_values)
 
         # Precompute matrix factorizations for all points
@@ -135,15 +136,25 @@ def refine(
         mean_vec = jnp.linalg.solve(L[:, :k, :k].transpose(0, 2, 1), L[:, k, :k][..., None]).squeeze(-1)
         std = L[:, k, k]
 
+        # Every level is processed as a slice of `max_batch` entries. Pad the scanned arrays by
+        # `max_batch` so that no dynamic slice runs past the end: a clamped slice recomputes
+        # (and rewrites) points of earlier levels, which is harmless for the values but makes the
+        # transpose of the batched (vmap) slices disagree with the forward, i.e. a wrong vjp.
+        values = jnp.concatenate([values, jnp.zeros(max_batch, values.dtype)])
+        neighbors_p = jnp.concatenate([neighbors, jnp.zeros((max_batch, k), neighbors.dtype)], axis=0)
+        mean_vec = jnp.concatenate([mean_vec, jnp.zeros((max_batch, k), mean_vec.dtype)], axis=0)
+        noise = jnp.concatenate([std * xi, jnp.zeros(max_batch, std.dtype)])
+
         # For each batch defined by offsets, dot neighbor values with mean_vec and add noise
         def step(values, start):
-            neighbor_values = values[lax.dynamic_slice(neighbors, (start - n0, 0), (max_batch, k))]
+            neighbor_values = values[lax.dynamic_slice(neighbors_p, (start - n0, 0), (max_batch, k))]
             mean_slice = jnp.sum(lax.dynamic_slice(mean_vec, (start - n0, 0), (max_batch, k)) * neighbor_values, axis=1)
-            noise_slice = lax.dynamic_slice(std * xi, (start - n0,), (max_batch,))
+            noise_slice = lax.dynamic_slice(noise, (start - n0,), (max_batch,))
             values = lax.dynamic_update_slice(values, mean_slice + noise_slice, (start,))
             return values, None
 
         values, _ = lax.scan(step, values, jnp.array(offsets[:-1]))
+        values = values[:n]
 
     else:
         values = initial_values
@@ -160,62 +171,59 @@ def refine(
     return values
 
 
-def refine_level(
-    points_global: Array,
-    points_local: Array,
-    neighbors: Array,
-    levels: Array,
-    level,
+def refine_step(
+    source_points: Array,
+    source_values: Array,
+    target_points: Array,
+    target_neighbors: Array,
+    target_xi: Array,
     covariance: Covariance,
-    values_global: Array,
-    xi: Array,
-    values_local: Array,
     *,
+    valid: Array | None = None,
     cuda: bool = False,
 ) -> Array:
     """
-    One level of refinement in an arbitrary point order (the building block of a distributed generation).
+    A single conditional step of the GraphGP algorithm: generate the target points given the values of their
+    neighbors among the source points. ``refine`` is a sequence of such steps over the levels of a graph.
 
-    ``refine`` runs all levels of a graph inside one call in the graph's order. ``refine_level`` refines only the
-    points of ``level`` among ``points_local``, conditioning them on their ``neighbors`` taken from ``values_global``,
-    so that a caller can hold the points in its own layout (for example one block per device) and exchange values
-    between levels. The math is the same conditional update as in ``refine`` (``fast_jit=True``): the mean weights
-    and the conditional standard deviation from one Cholesky factorization of the window covariance per point.
+    Nothing is assumed about the order or the layout of the points, so this is the building block if the levels are
+    run by the caller, for example a distributed generation that holds one block of points per device and exchanges
+    values between the steps. Only the targets are factorized (one Cholesky of the ``(k+1, k+1)`` covariance each).
 
     Args:
-        points_global: Points the neighbors refer to, shape ``(N, d)``.
-        points_local: The points handled here, ``(M, d)``.
-        neighbors: Their neighbors as indices into ``points_global``, ``(M, k)``; the neighbors of a point must
-            have been generated before (lower level). Points of other levels may carry dummy neighbors.
-        levels: Level of every local point, ``(M,)``; initial points have level 0.
-        level: The level to refine (an integer or an integer array of shape ``(1,)``).
-        covariance: Tuple ``(cov_bins, cov_vals)`` or a callable ``cov(x1, x2)``; the CUDA extension requires the tuple.
-        values_global: Current values of ``points_global``, ``(N,)``.
-        xi: Excitations of the local points, ``(M,)``.
-        values_local: Current values of the local points, ``(M,)``.
-        cuda: Whether to use the CUDA extension (``graphgp_cuda.refine_level``).
+        source_points: Points the neighbors refer to, of shape ``(N, d)``.
+        source_values: Values of the source points of shape ``(N,)``.
+        target_points: Points to generate of shape ``(M, d)``.
+        target_neighbors: Neighbors of the targets as indices into the source points, of shape ``(M, k)``.
+        target_xi: Unit normal distributed parameters of the targets of shape ``(M,)``.
+        covariance: Tuple of arrays (cov_bins, cov_vals) storing discretized covariance, or a callable ``cov(x1, x2)`` taking two points of shape ``(d,)`` and returning a scalar.
+        valid: Optional boolean mask of shape ``(M,)`` for targets padded to a fixed size. Padded targets (``False``) get the value 0 and do not contribute to derivatives; their points and neighbors can be arbitrary. Default is ``None``, all targets are valid.
+        cuda: Whether to use optional CUDA extension, if installed. Requires a discretized covariance. Default is ``False``.
 
     Returns:
-        ``values_local`` with the points of ``level`` refined, ``(M,)``.
+        The values of the target points of shape ``(M,)``.
     """
-    level = jnp.asarray(level).reshape(1)
     if cuda:
         if not has_cuda:
             raise ImportError("CUDA extension not installed, cannot use cuda=True.")
         _check_discretized(covariance)
-        return graphgp_cuda.refine_level(
-            points_global, points_local, neighbors, levels, level, *covariance, values_global, xi, values_local
+        return graphgp_cuda.refine_step(
+            source_points, source_values, target_points, target_neighbors, target_xi, *covariance, valid=valid
         )
-    k = neighbors.shape[1]
-    sel = levels == level[0]
-    joint = jnp.concatenate([points_global[neighbors], points_local[:, None, :]], axis=1)
-    K = jax.vmap(compute_cov_matrix, in_axes=(None, 0, 0))(covariance, joint, joint)
-    K = jnp.where(sel[:, None, None], K, jnp.eye(k + 1, dtype=K.dtype))  # others: well conditioned, unused
+    k = target_neighbors.shape[1]
+    if valid is not None:
+        valid = jnp.asarray(valid) != 0
+        target_neighbors = jnp.where(valid[:, None], target_neighbors, 0)
+    joint_points = jnp.concatenate([source_points[target_neighbors], target_points[:, None]], axis=1)
+    K = jax.vmap(compute_cov_matrix, in_axes=(None, 0, 0))(covariance, joint_points, joint_points)
+    if valid is not None:
+        K = jnp.where(valid[:, None, None], K, jnp.eye(k + 1, dtype=K.dtype))  # padding: well conditioned, unused
     L = jnp.linalg.cholesky(K)
     mean_vec = jnp.linalg.solve(L[:, :k, :k].transpose(0, 2, 1), L[:, k, :k][..., None]).squeeze(-1)
-    std = L[:, k, k]
-    new = jnp.sum(mean_vec * values_global[neighbors], axis=1) + std * xi
-    return jnp.where(sel, new, values_local)
+    values = jnp.sum(mean_vec * source_values[target_neighbors], axis=1) + L[:, k, k] * target_xi
+    if valid is not None:
+        values = jnp.where(valid, values, 0.0)
+    return values
 
 
 def generate_inv(

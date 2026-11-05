@@ -96,22 +96,74 @@ def test_callable_covariance(setup_graph):
     check_equal(logdet_table, logdet_func, rtol=1e-3, text="Callable covariance logdet does not match discretized.")
 
 
-def test_refine_level_matches_generate(setup_graph):
-    """Refining level by level with ``refine_level`` (values held in the graph's order, dummy
-    neighbors for the initial points) reproduces ``generate``."""
+def test_fast_jit_vmap_vjp(setup_graph):
+    """The vjp of the batched (vmap) fast_jit generation is the transpose of its jvp,
+    with respect to the excitations and to the covariance values (regression: the
+    clamped dynamic slices of the level scan gave a wrong vjp under vmap)."""
     graph, covariance, _points = setup_graph
-    n = graph.points.shape[0]
-    n0 = graph.offsets[0]
-    k = graph.neighbors.shape[1]
-    xi = jr.normal(rng, (n,))
+    k1, k2, k3, k4 = jr.split(rng, 4)
+    xi = jr.normal(k1, (3, graph.points.shape[0]))
+    v = jr.normal(k2, xi.shape)
+    w = jr.normal(k3, xi.shape)
+    cov_bins, cov_vals = covariance
+
+    def adjoint(f, x, tangent):
+        _, jv = jax.jvp(f, (x,), (tangent,))
+        _, vjp = jax.vjp(f, x)
+        (jt,) = vjp(w)
+        lhs, rhs = jnp.vdot(jv, w), jnp.vdot(tangent, jt)
+        assert abs(lhs - rhs) <= 1e-4 * abs(lhs), f"<Jv,w> = {lhs}, <v,J^T w> = {rhs}"
+
+    gen_xi = jax.vmap(lambda x: gp.generate(graph, covariance, x, fast_jit=True))
+    adjoint(gen_xi, xi, v)
+    check_equal(gen_xi(xi)[0], gp.generate(graph, covariance, xi[0], fast_jit=False), rtol=1e-5, text="vmap fast_jit vs simple")
+    gen_cov = lambda c: jax.vmap(lambda x: gp.generate(graph, (cov_bins, c), x, fast_jit=True))(xi)  # noqa: E731
+    adjoint(gen_cov, cov_vals, jr.normal(k4, cov_vals.shape) * 1e-2)
+
+
+def _generate_by_steps(graph, covariance, xi_tree, pad=0):
+    """Generation in the graph's order as one ``refine_step`` per level, optionally with every level
+    padded by ``pad`` invalid targets (arbitrary neighbors, a point that coincides with them)."""
+    n0, k = int(graph.offsets[0]), graph.neighbors.shape[1]
+    values = jnp.zeros(graph.points.shape[0]).at[:n0].set(gp.generate_dense(graph.points[:n0], covariance, xi_tree[:n0]))
+    for start, end in zip(graph.offsets[:-1], graph.offsets[1:]):
+        start, end = int(start), int(end)
+        targets, neighbors, xi = graph.points[start:end], graph.neighbors[start - n0 : end - n0], xi_tree[start:end]
+        valid = None
+        if pad:
+            targets = jnp.concatenate([targets, jnp.zeros((pad, targets.shape[1]))])
+            neighbors = jnp.concatenate([neighbors, jnp.full((pad, k), -1, neighbors.dtype)])
+            xi = jnp.concatenate([xi, jnp.ones(pad)])
+            valid = jnp.arange(end - start + pad) < end - start
+        new = gp.refine_step(graph.points, values, targets, neighbors, xi, covariance, valid=valid)
+        if pad:
+            assert jnp.all(new[end - start :] == 0), "Padded targets must return 0."
+        values = values.at[start:end].set(new[: end - start])
+    return values
+
+
+def test_refine_step_matches_generate(setup_graph):
+    """One ``refine_step`` per level, with the values held in the graph's order, reproduces ``generate``."""
+    graph, covariance, _points = setup_graph
+    xi = jr.normal(rng, (graph.points.shape[0],))
     expected = gp.generate(graph, covariance, xi, fast_jit=False)[graph.indices]  # graph order
-    xi_tree = xi[graph.indices]
-    levels = jnp.zeros(n, dtype=jnp.int32)
-    for l in range(1, len(graph.offsets)):
-        levels = levels.at[graph.offsets[l - 1] : graph.offsets[l]].set(l)
-    neighbors = jnp.concatenate([jnp.zeros((n0, k), graph.neighbors.dtype), graph.neighbors], axis=0)
-    values = jnp.zeros(n).at[:n0].set(gp.generate_dense(graph.points[:n0], covariance, xi_tree[:n0]))
-    step = jax.jit(Partial(gp.refine_level, cuda=False))
-    for l in range(1, len(graph.offsets)):
-        values = step(graph.points, graph.points, neighbors, levels, l, covariance, values, xi_tree, values)
-    check_equal(values, expected, rtol=1e-10, text="refine_level level by level does not match generate.")
+    values = _generate_by_steps(graph, covariance, xi[graph.indices])
+    check_equal(values, expected, rtol=1e-10, text="refine_step level by level does not match generate.")
+
+
+def test_refine_step_padding(setup_graph):
+    """Padded targets do not change the values of the others nor the gradients, which stay finite although
+    the padded entries are degenerate (identical points)."""
+    graph, covariance, _points = setup_graph
+    xi_tree = jr.normal(rng, (graph.points.shape[0],))[graph.indices]
+    cov_bins, cov_vals = covariance
+
+    def loss(xi_tree, cov_vals, pad):
+        return jnp.sum(jnp.sin(_generate_by_steps(graph, (cov_bins, cov_vals), xi_tree, pad=pad)))
+
+    v0, g0 = jax.value_and_grad(loss, argnums=(0, 1))(xi_tree, cov_vals, 0)
+    v1, g1 = jax.value_and_grad(loss, argnums=(0, 1))(xi_tree, cov_vals, 7)
+    check_equal(v1, v0, rtol=1e-10, text="Padding changes the generated values.")
+    for a, b in zip(g1, g0):
+        assert jnp.all(jnp.isfinite(a)), "Gradient with padded targets is not finite."
+        assert jnp.allclose(a, b, rtol=1e-8, atol=1e-10), "Padding changes the gradient."
