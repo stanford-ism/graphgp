@@ -171,6 +171,61 @@ def refine(
     return values
 
 
+def refine_step(
+    source_points: Array,
+    source_values: Array,
+    target_points: Array,
+    target_neighbors: Array,
+    target_xi: Array,
+    covariance: Covariance,
+    *,
+    valid: Array | None = None,
+    cuda: bool = False,
+) -> Array:
+    """
+    A single conditional step of the GraphGP algorithm: generate the target points given the values of their
+    neighbors among the source points. ``refine`` is a sequence of such steps over the levels of a graph.
+
+    Nothing is assumed about the order or the layout of the points, so this is the building block if the levels are
+    run by the caller, for example a distributed generation that holds one block of points per device and exchanges
+    values between the steps. Only the targets are factorized (one Cholesky of the ``(k+1, k+1)`` covariance each).
+
+    Args:
+        source_points: Points the neighbors refer to, of shape ``(N, d)``.
+        source_values: Values of the source points of shape ``(N,)``.
+        target_points: Points to generate of shape ``(M, d)``.
+        target_neighbors: Neighbors of the targets as indices into the source points, of shape ``(M, k)``.
+        target_xi: Unit normal distributed parameters of the targets of shape ``(M,)``.
+        covariance: Tuple of arrays (cov_bins, cov_vals) storing discretized covariance, or a callable ``cov(x1, x2)`` taking two points of shape ``(d,)`` and returning a scalar.
+        valid: Optional boolean mask of shape ``(M,)`` for targets padded to a fixed size. Padded targets (``False``) get the value 0 and do not contribute to derivatives; their points and neighbors can be arbitrary. Default is ``None``, all targets are valid.
+        cuda: Whether to use optional CUDA extension, if installed. Requires a discretized covariance. Default is ``False``.
+
+    Returns:
+        The values of the target points of shape ``(M,)``.
+    """
+    if cuda:
+        if not has_cuda:
+            raise ImportError("CUDA extension not installed, cannot use cuda=True.")
+        _check_discretized(covariance)
+        return graphgp_cuda.refine_step(
+            source_points, source_values, target_points, target_neighbors, target_xi, *covariance, valid=valid
+        )
+    k = target_neighbors.shape[1]
+    if valid is not None:
+        valid = jnp.asarray(valid) != 0
+        target_neighbors = jnp.where(valid[:, None], target_neighbors, 0)
+    joint_points = jnp.concatenate([source_points[target_neighbors], target_points[:, None]], axis=1)
+    K = jax.vmap(compute_cov_matrix, in_axes=(None, 0, 0))(covariance, joint_points, joint_points)
+    if valid is not None:
+        K = jnp.where(valid[:, None, None], K, jnp.eye(k + 1, dtype=K.dtype))  # padding: well conditioned, unused
+    L = jnp.linalg.cholesky(K)
+    mean_vec = jnp.linalg.solve(L[:, :k, :k].transpose(0, 2, 1), L[:, k, :k][..., None]).squeeze(-1)
+    values = jnp.sum(mean_vec * source_values[target_neighbors], axis=1) + L[:, k, k] * target_xi
+    if valid is not None:
+        values = jnp.where(valid, values, 0.0)
+    return values
+
+
 def generate_inv(
     graph: Graph,
     covariance: Covariance,
