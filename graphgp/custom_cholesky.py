@@ -1,10 +1,12 @@
 """
 Semidefinite Cholesky decomposition as a JAX primitive.
 
-Pivots that fall below floating point resolution, ``d_j <= n * eps * A_jj``, are dropped: ``L_jj`` and the column
-below it are set to zero, so that point carries no information to later rows. This replaces adding jitter to the
-diagonal for (near-)duplicate points. Below that scale the computed pivot is dominated by rounding error, so keeping
-it would divide by noise.
+Pivots ``d_j <= n * (eps + rtol) * A_jj`` are dropped: ``L_jj`` and the column below it are set to zero, so that
+point carries no information to later rows. This replaces adding jitter to the diagonal for (near-)duplicate points.
+Errors of up to ``r * A_jj`` in the entries of ``A`` perturb it by up to ``n * r * A_jj`` in norm. The rounding of the
+factorization contributes ``r = eps``, the covariance values themselves ``r = rtol`` (e.g. from interpolating a
+discretized covariance), and the two add. A pivot of that size is not determined by ``A``, so keeping it would divide
+by noise.
 
 Derivatives treat the set of dropped pivots as fixed, which is the derivative of the model with those points removed.
 The forward pass, its JVP (linear in the matrix tangent), and the VJP (transpose of the JVP) are separate primitives.
@@ -21,13 +23,16 @@ from jax.interpreters import ad, batching, mlir
 
 __all__ = ["cholesky", "permute", "pivot_order", "solve_lower", "solve_lower_transpose", "unit_pivot"]
 
+COV_RTOL = 1e-6  # default relative accuracy of the covariance values
 
-def cholesky(A):
+
+def cholesky(A, rtol=COV_RTOL):
     """
     Lower Cholesky factor of symmetric positive semidefinite ``A`` of shape ``(..., n, n)``. Only the lower triangle is
-    read. Dropped pivots have ``L_jj = 0`` and a zero column below the diagonal.
+    read. Dropped pivots have ``L_jj = 0`` and a zero column below the diagonal. ``rtol`` is the relative accuracy of
+    the entries of ``A``.
     """
-    return cholesky_p.bind(A)
+    return cholesky_p.bind(A, rtol=float(rtol))
 
 
 def pivot_order(A, n_pivot=None):
@@ -36,7 +41,7 @@ def pivot_order(A, n_pivot=None):
     largest Schur complement diagonal (conditional variance given the indices before it) comes next. Only the first
     ``n_pivot`` indices are reordered (default all), the rest keep their positions, e.g. so a target stays last.
 
-    Processing tiny pivots last keeps them from amplifying rounding errors in later rows, so the ``n * eps`` cutoff in
+    Processing tiny pivots last keeps them from amplifying rounding errors in later rows, so the tolerance in
     ``cholesky`` remains valid. Returns integer indices of shape ``(..., n)``, with no gradient. Ties go to the lowest
     index.
     """
@@ -92,11 +97,11 @@ def solve_lower_transpose(L, b):
 # ===================== Implementations =====================
 
 
-def _cholesky_impl(A):
+def _cholesky_impl(A, *, rtol):
     n = A.shape[-1]
     rows = jnp.arange(n)
     diag_A = jnp.diagonal(A, axis1=-2, axis2=-1)
-    tol = n * jnp.finfo(A.dtype).eps * diag_A
+    tol = n * (jnp.finfo(A.dtype).eps + rtol) * diag_A
 
     def body(j, L):
         # columns >= j of L are still zero, so the matvec only sums over k < j
@@ -152,23 +157,23 @@ cholesky_jvp_p = Primitive("graphgp_cholesky_jvp")
 cholesky_vjp_p = Primitive("graphgp_cholesky_vjp")
 
 
-def _same_shape(x, *_):
+def _same_shape(x, *_, **params):
     return ShapedArray(x.shape, x.dtype)
 
 
-for prim, impl, abstract in [
-    (cholesky_p, _cholesky_impl, _same_shape),
-    (cholesky_jvp_p, _cholesky_jvp_impl, lambda L, dA: _same_shape(dA)),
-    (cholesky_vjp_p, _cholesky_vjp_impl, lambda L, ct: _same_shape(ct)),
+for prim, impl, abstract, static in [
+    (cholesky_p, _cholesky_impl, _same_shape, ("rtol",)),
+    (cholesky_jvp_p, _cholesky_jvp_impl, lambda L, dA: _same_shape(dA), ()),
+    (cholesky_vjp_p, _cholesky_vjp_impl, lambda L, ct: _same_shape(ct), ()),
 ]:
-    prim.def_impl(jax.jit(impl))
+    prim.def_impl(jax.jit(impl, static_argnames=static))
     prim.def_abstract_eval(abstract)
     mlir.register_lowering(prim, mlir.lower_fun(impl, multiple_results=False))
 
 
-def _cholesky_jvp_rule(primals, tangents):
+def _cholesky_jvp_rule(primals, tangents, *, rtol):
     (A,), (dA,) = primals, tangents
-    L = cholesky_p.bind(A)
+    L = cholesky_p.bind(A, rtol=rtol)
     if type(dA) is ad.Zero:
         return L, ad.Zero.from_primal_value(L)
     return L, cholesky_jvp_p.bind(L, _symmetrize(dA))
@@ -216,10 +221,10 @@ ad.primitive_jvps[cholesky_vjp_p] = _linear_jvp(cholesky_vjp_p)
 
 def _batch_rule(prim):
     # impls broadcast over leading dimensions, so move all batch axes to the front
-    def rule(args, dims):
+    def rule(args, dims, **params):
         size = next(a.shape[d] for a, d in zip(args, dims) if d is not None)
         args = [batching.bdim_at_front(a, d, size) for a, d in zip(args, dims)]
-        return prim.bind(*args), 0
+        return prim.bind(*args, **params), 0
 
     return rule
 
