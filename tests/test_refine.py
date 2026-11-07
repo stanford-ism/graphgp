@@ -144,3 +144,13 @@ def test_clamped_matches_unclamped(setup_graph):
     g1 = jax.grad(lambda c: jnp.sum(gp.generate(graph, (covariance[0], c), xi, clamp=True) ** 2))(covariance[1])
     g2 = jax.grad(lambda c: jnp.sum(gp.generate(graph, (covariance[0], c), xi, clamp=False) ** 2))(covariance[1])
     check_equal(g1, g2, rtol=1e-8, text="Clamped and unclamped gradients do not match.")
+
+
+def test_smooth_kernel():
+    # interpolated covariance matrices of a smooth kernel are numerically singular and slightly indefinite
+    points = jr.normal(rng, (10_000, 3))
+    graph = gp.build_graph(points, n0=1000, k=10)
+    cov_bins, cov_vals = gp.extras.matern_kernel(p=3, variance=1.0, cutoff=3.0, r_min=1e-4, r_max=20, n_bins=1000)
+    xi = jr.normal(rng, (len(points),))
+    values = jax.jit(gp.generate)(graph, (cov_bins, cov_vals), xi)
+    assert jnp.max(jnp.abs(values)) < 6, "Values of a unit variance field exceed 6."
