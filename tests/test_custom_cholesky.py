@@ -64,3 +64,15 @@ def test_vmap_jit():
     assert jnp.allclose(jax.jit(jax.vmap(cholesky))(A), cholesky(A))
     grad = jax.vmap(jax.grad(lambda A: jnp.sum(cholesky(A))))(A)
     assert jnp.allclose(grad, jax.grad(lambda A: jnp.sum(cholesky(A)))(A))
+
+
+def test_rtol():
+    # a coarse relative accuracy drops a pivot that the default keeps, also under jit, vmap and jvp
+    x = jnp.array([0.0, 1e-4, 1.0, 2.0])
+    A = jnp.exp(-jnp.abs(x[:, None] - x[None, :]))
+    assert jnp.all(jnp.diagonal(cholesky(A)) > 0)
+    coarse = jax.jit(lambda A: cholesky(A, 1e-2))
+    assert jnp.array_equal(jnp.diagonal(coarse(A)) > 0, jnp.array([True, False, True, True]))
+    assert jnp.allclose(jax.vmap(coarse)(jnp.stack([A, A])), jnp.stack([coarse(A)] * 2))
+    dL = jax.jvp(coarse, (A,), (jnp.ones_like(A),))[1]
+    assert jnp.all(dL[:, 1] == 0)  # the dropped column stays zero in the tangent
